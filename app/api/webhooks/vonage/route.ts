@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { logSecurityEvent, AUDIT_ACTIONS } from '@/lib/audit-log'
-import { extractPhoneFromVonageWebhook, getPhoneNumberVariations, formatPhoneNumber } from '@/lib/phone-utils'
+import { extractPhoneFromVonageWebhook, getPhoneNumberVariations, formatPhoneNumber, normalizePhoneNumber } from '@/lib/phone-utils'
 
 // Force dynamic runtime for this API route
 export const dynamic = 'force-dynamic'
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const body = await request.text()
     
     // Log the incoming webhook
-    console.log('Vonage webhook received:', body)
+    console.log('Vonage webhook received (POST):', body)
     
     // Verify webhook signature if secret is configured
     if (VONAGE_WEBHOOK_SECRET) {
@@ -61,121 +61,10 @@ export async function POST(request: NextRequest) {
     const webhookData = new URLSearchParams(body)
     const phoneNumber = webhookData.get('PhoneNumber')
     
-    if (!phoneNumber) {
-      console.error('No PhoneNumber found in webhook data')
-      await logSecurityEvent(
-        'unknown',
-        AUDIT_ACTIONS.SECURITY_VIOLATION,
-        { endpoint: '/api/webhooks/vonage', method: 'POST', error: 'No PhoneNumber' },
-        false,
-        'Vonage webhook without PhoneNumber',
-        request
-      )
-      return NextResponse.json(
-        { error: 'PhoneNumber is required' },
-        { status: 400 }
-      )
-    }
-    
-    // Extract and normalize phone number using utility function
-    const normalizedPhone = extractPhoneFromVonageWebhook(body)
-    
-    if (!normalizedPhone) {
-      console.error('Invalid phone number format:', phoneNumber)
-      await logSecurityEvent(
-        'unknown',
-        AUDIT_ACTIONS.SECURITY_VIOLATION,
-        { endpoint: '/api/webhooks/vonage', method: 'POST', error: 'Invalid phone format' },
-        false,
-        'Vonage webhook with invalid phone format',
-        request
-      )
-      return NextResponse.json(
-        { error: 'Invalid phone number format' },
-        { status: 400 }
-      )
-    }
-    
-    console.log('Processing phone number:', normalizedPhone, 'Formatted:', formatPhoneNumber(normalizedPhone))
-    
-    // Get phone number variations for better search
-    const phoneVariations = getPhoneNumberVariations(normalizedPhone)
-    console.log('Searching for variations:', phoneVariations)
-    
-    // Search for debtors with this phone number or its variations
-    const { data: phoneNumbers, error: phoneError } = await supabase
-      .from('phone_numbers')
-      .select(`
-        id,
-        number,
-        person_id,
-        phone_type,
-        is_current,
-        is_verified,
-        persons!inner(
-          id,
-          full_name,
-          first_name,
-          last_name,
-          ssn
-        ),
-        debtors!inner(
-          id,
-          account_number,
-          current_balance,
-          collection_status,
-          collection_priority,
-          master_portfolios(name),
-          master_clients(name)
-        )
-      `)
-      .in('number', phoneVariations)
-      .or(phoneVariations.map(p => `number.like.%${p}%`).join(','))
-    
-    if (phoneError) {
-      console.error('Error searching phone numbers:', phoneError)
-      await logSecurityEvent(
-        'unknown',
-        AUDIT_ACTIONS.SECURITY_VIOLATION,
-        { endpoint: '/api/webhooks/vonage', method: 'POST', error: phoneError.message },
-        false,
-        'Database error in Vonage webhook',
-        request
-      )
-      return NextResponse.json(
-        { error: 'Database error' },
-        { status: 500 }
-      )
-    }
-    
-    // Log the webhook processing
-    await logSecurityEvent(
-      'system',
-      AUDIT_ACTIONS.DATA_VIEW,
-      { endpoint: '/api/webhooks/vonage', method: 'POST', phoneNumber: normalizedPhone },
-      true,
-      'Vonage webhook processed',
-      request
-    )
-    
-    // Return the found debtors
-    const results = phoneNumbers?.map(pn => ({
-      phone_number: pn.number,
-      person: pn.persons,
-      debtors: pn.debtors
-    })) || []
-    
-    console.log(`Found ${results.length} matches for phone number ${normalizedPhone}`)
-    
-    return NextResponse.json({
-      success: true,
-      phone_number: normalizedPhone,
-      matches: results.length,
-      results
-    })
+    return await processPhoneNumber(phoneNumber, 'POST', request)
     
   } catch (error) {
-    console.error('Error processing Vonage webhook:', error)
+    console.error('Error processing Vonage webhook (POST):', error)
     await logSecurityEvent(
       'unknown',
       AUDIT_ACTIONS.SECURITY_VIOLATION,
@@ -191,10 +80,152 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Handle GET requests for webhook verification
+// Handle GET requests for webhook verification and testing
 export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const phoneNumber = searchParams.get('PhoneNumber')
+    
+    console.log('Vonage webhook received (GET):', { phoneNumber })
+    
+    if (phoneNumber) {
+      return await processPhoneNumber(phoneNumber, 'GET', request)
+    }
+    
+    return NextResponse.json({
+      message: 'Vonage webhook endpoint is active',
+      timestamp: new Date().toISOString(),
+      usage: {
+        get: 'GET /api/webhooks/vonage?PhoneNumber=12079911144',
+        post: 'POST /api/webhooks/vonage with form data: PhoneNumber=12079911144'
+      }
+    })
+    
+  } catch (error) {
+    console.error('Error processing Vonage webhook (GET):', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+// Shared function to process phone number
+async function processPhoneNumber(phoneNumber: string | null, method: string, request: NextRequest) {
+  const supabase = createSupabaseClient()
+  
+  if (!phoneNumber) {
+    console.error('No PhoneNumber found in webhook data')
+    await logSecurityEvent(
+      'unknown',
+      AUDIT_ACTIONS.SECURITY_VIOLATION,
+      { endpoint: '/api/webhooks/vonage', method, error: 'No PhoneNumber' },
+      false,
+      'Vonage webhook without PhoneNumber',
+      request
+    )
+    return NextResponse.json(
+      { error: 'PhoneNumber is required' },
+      { status: 400 }
+    )
+  }
+  
+  // Extract and normalize phone number using utility function
+  const normalizedPhone = normalizePhoneNumber(phoneNumber)
+  
+  if (!normalizedPhone || normalizedPhone.length < 10) {
+    console.error('Invalid phone number format:', phoneNumber)
+    await logSecurityEvent(
+      'unknown',
+      AUDIT_ACTIONS.SECURITY_VIOLATION,
+      { endpoint: '/api/webhooks/vonage', method, error: 'Invalid phone format' },
+      false,
+      'Vonage webhook with invalid phone format',
+      request
+    )
+    return NextResponse.json(
+      { error: 'Invalid phone number format' },
+      { status: 400 }
+    )
+  }
+  
+  console.log('Processing phone number:', normalizedPhone, 'Formatted:', formatPhoneNumber(normalizedPhone))
+  
+  // Get phone number variations for better search
+  const phoneVariations = getPhoneNumberVariations(normalizedPhone)
+  console.log('Searching for variations:', phoneVariations)
+  
+  // Search for debtors with this phone number or its variations
+  const { data: phoneNumbers, error: phoneError } = await supabase
+    .from('phone_numbers')
+    .select(`
+      id,
+      number,
+      person_id,
+      phone_type,
+      is_current,
+      is_verified,
+      persons!inner(
+        id,
+        full_name,
+        first_name,
+        last_name,
+        ssn
+      ),
+      debtors!inner(
+        id,
+        account_number,
+        current_balance,
+        collection_status,
+        collection_priority,
+        master_portfolios(name),
+        master_clients(name)
+      )
+    `)
+    .in('number', phoneVariations)
+    .or(phoneVariations.map(p => `number.like.%${p}%`).join(','))
+  
+  if (phoneError) {
+    console.error('Error searching phone numbers:', phoneError)
+    await logSecurityEvent(
+      'unknown',
+      AUDIT_ACTIONS.SECURITY_VIOLATION,
+      { endpoint: '/api/webhooks/vonage', method, error: phoneError.message },
+      false,
+      'Database error in Vonage webhook',
+      request
+    )
+    return NextResponse.json(
+      { error: 'Database error' },
+      { status: 500 }
+    )
+  }
+  
+  // Log the webhook processing
+  await logSecurityEvent(
+    'system',
+    AUDIT_ACTIONS.DATA_VIEW,
+    { endpoint: '/api/webhooks/vonage', method, phoneNumber: normalizedPhone },
+    true,
+    'Vonage webhook processed',
+    request
+  )
+  
+  // Return the found debtors
+  const results = phoneNumbers?.map(pn => ({
+    phone_number: pn.number,
+    person: pn.persons,
+    debtors: pn.debtors
+  })) || []
+  
+  console.log(`Found ${results.length} matches for phone number ${normalizedPhone}`)
+  
   return NextResponse.json({
-    message: 'Vonage webhook endpoint is active',
-    timestamp: new Date().toISOString()
+    success: true,
+    phone_number: normalizedPhone,
+    formatted_phone: formatPhoneNumber(normalizedPhone),
+    method,
+    matches: results.length,
+    results
   })
 }

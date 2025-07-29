@@ -19,6 +19,7 @@ import {
   CurrencyDollarIcon,
   CalendarIcon
 } from '@heroicons/react/24/outline'
+import { useSearchParams } from 'next/navigation'
 
 // Simple phone formatting function
 const formatPhoneNumber = (phone: string) => {
@@ -114,12 +115,22 @@ interface Debtor {
 
 export default function DebtorsPage() {
   const { user } = useAuth()
+  const searchParams = useSearchParams()
   const [debtors, setDebtors] = useState<Debtor[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [phoneSearch, setPhoneSearch] = useState('') // New phone search state
+  const [phoneSearch, setPhoneSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [priorityFilter, setPriorityFilter] = useState('all')
+
+  // Check for PhoneNumber in URL parameters on component mount
+  useEffect(() => {
+    const phoneFromUrl = searchParams.get('PhoneNumber')
+    if (phoneFromUrl) {
+      setPhoneSearch(phoneFromUrl)
+      console.log('Phone number from URL:', phoneFromUrl)
+    }
+  }, [searchParams])
 
   useEffect(() => {
     fetchDebtors()

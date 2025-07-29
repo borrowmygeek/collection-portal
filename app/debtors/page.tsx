@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { authenticatedFetch } from '@/lib/supabase'
+import { formatPhoneNumber } from '@/lib/phone-utils'
 import { Sidebar } from '@/components/Sidebar'
 import DashboardHeader from '@/components/DashboardHeader'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -77,6 +78,13 @@ interface Debtor {
   // as they should only be displayed in account details view, not in general debtor information.
   
   persons: Person
+  phone_numbers: {
+    id: string
+    number: string
+    phone_type: string
+    is_current: boolean
+    is_verified: boolean
+  }[]
   master_portfolios: {
     id: string
     name: string
@@ -98,29 +106,41 @@ export default function DebtorsPage() {
   const [debtors, setDebtors] = useState<Debtor[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [phoneSearch, setPhoneSearch] = useState('') // New phone search state
   const [statusFilter, setStatusFilter] = useState('all')
   const [priorityFilter, setPriorityFilter] = useState('all')
 
   useEffect(() => {
     fetchDebtors()
-  }, [])
+  }, [searchTerm, phoneSearch, statusFilter, priorityFilter])
 
   const fetchDebtors = async () => {
     try {
       setLoading(true)
-      const response = await authenticatedFetch('/api/debtors')
-      if (response.ok) {
-        const data = await response.json()
-        // The API returns { debtors: [...], total: number, page: number, etc. }
-        // We need to extract the debtors array from the response
-        setDebtors(data.debtors || [])
-      } else {
-        console.error('Error fetching debtors:', response.status)
-        setDebtors([]) // Set empty array on error
+      const params = new URLSearchParams()
+      
+      if (searchTerm) {
+        params.append('search', searchTerm)
       }
+      
+      if (phoneSearch) {
+        params.append('phone', phoneSearch)
+      }
+      
+      if (statusFilter !== 'all') {
+        params.append('status', statusFilter)
+      }
+
+      const response = await authenticatedFetch(`/api/debtors?${params.toString()}`)
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch debtors')
+      }
+
+      const data = await response.json()
+      setDebtors(data.debtors || [])
     } catch (error) {
       console.error('Error fetching debtors:', error)
-      setDebtors([]) // Set empty array on error
     } finally {
       setLoading(false)
     }
@@ -218,6 +238,17 @@ export default function DebtorsPage() {
                   />
                 </div>
               </div>
+              <div className="flex-1">
+                <div className="relative">
+                  <PhoneIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <Input
+                    placeholder="Search by phone number..."
+                    value={phoneSearch}
+                    onChange={(e) => setPhoneSearch(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
@@ -298,9 +329,15 @@ export default function DebtorsPage() {
 
                         {/* Contact Info */}
                         <div className="flex flex-wrap gap-4 mt-3 text-sm text-gray-600">
-                          {/* Removed phone_primary, email_primary, address_line1, city, state, zipcode */}
-                          {/* Assuming these fields are no longer directly available in the Debtor interface */}
-                          {/* If they are needed, they would need to be fetched or passed as props */}
+                          {debtor.phone_numbers && debtor.phone_numbers.length > 0 && (
+                            <div className="flex items-center gap-2">
+                              <PhoneIcon className="h-4 w-4" />
+                              <span>
+                                {formatPhoneNumber(debtor.phone_numbers.find(p => p.is_current)?.number || debtor.phone_numbers[0].number)}
+                                {debtor.phone_numbers.length > 1 && ` (+${debtor.phone_numbers.length - 1} more)`}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
 

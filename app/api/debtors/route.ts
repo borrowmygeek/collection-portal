@@ -47,15 +47,16 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const supabase = createSupabaseClient()
     const { searchParams } = new URL(request.url)
-    
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '50')
-    const portfolioId = searchParams.get('portfolio_id')
+    const portfolioId = searchParams.get('portfolioId')
     const status = searchParams.get('status')
-    
+    const search = searchParams.get('search')
+    const phoneSearch = searchParams.get('phone') // New phone search parameter
     const offset = (page - 1) * limit
+
+    const supabase = createSupabaseClient()
     
     let query = supabase
       .from('debtors')
@@ -77,6 +78,13 @@ export async function GET(request: NextRequest) {
           do_not_text,
           bankruptcy_filed,
           active_military
+        ),
+        phone_numbers(
+          id,
+          number,
+          phone_type,
+          is_current,
+          is_verified
         ),
         master_portfolios(
           id,
@@ -108,6 +116,27 @@ export async function GET(request: NextRequest) {
 
     if (status) {
       query = query.eq('collection_status', status)
+    }
+
+    // Search by name, account number, or creditor
+    if (search) {
+      query = query.or(`
+        persons.full_name.ilike.%${search}%,
+        persons.first_name.ilike.%${search}%,
+        persons.last_name.ilike.%${search}%,
+        account_number.ilike.%${search}%,
+        original_creditor_name.ilike.%${search}%
+      `)
+    }
+
+    // Search by phone number
+    if (phoneSearch) {
+      // Normalize phone number (remove non-digits)
+      const normalizedPhone = phoneSearch.replace(/\D/g, '')
+      query = query.or(`
+        phone_numbers.number.ilike.%${normalizedPhone}%,
+        phone_numbers.number.ilike.%${phoneSearch}%
+      `)
     }
 
     const { data: debtors, error, count } = await query

@@ -789,6 +789,341 @@ function parseDate(dateString: string | null | undefined): string | null {
   return date.toISOString().split('T')[0]
 }
 
+// Helper function to format phone numbers
+function formatPhoneNumber(phone: string | null | undefined): string | null {
+  if (!phone || typeof phone !== 'string') return null
+  
+  const cleaned = phone.replace(/\D/g, '')
+  if (cleaned.length === 10) {
+    return `(${cleaned.slice(0,3)}) ${cleaned.slice(3,6)}-${cleaned.slice(6)}`
+  } else if (cleaned.length === 11 && cleaned.startsWith('1')) {
+    return `+1 (${cleaned.slice(1,4)}) ${cleaned.slice(4,7)}-${cleaned.slice(7)}`
+  }
+  
+  return phone.trim()
+}
+
+// Helper function to validate email addresses
+function isValidEmail(email: string | null | undefined): boolean {
+  if (!email || typeof email !== 'string') return false
+  
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email.trim())
+}
+
+// Helper function to populate phone numbers
+async function populatePhoneNumbers(
+  personId: string, 
+  mappedRow: any, 
+  supabase: any
+): Promise<void> {
+  const phoneFields = [
+    { field: 'phone', type: 'mobile' },
+    { field: 'home_phone', type: 'home' },
+    { field: 'work_phone', type: 'work' },
+    { field: 'cell_phone', type: 'mobile' },
+    { field: 'mobile_phone', type: 'mobile' }
+  ]
+
+  for (const { field, type } of phoneFields) {
+    const phoneValue = mappedRow[field]
+    if (phoneValue) {
+      const formattedPhone = formatPhoneNumber(phoneValue)
+      if (formattedPhone) {
+        // Check if phone number already exists for this person
+        const { data: existingPhone } = await supabase
+          .from('phone_numbers')
+          .select('id')
+          .eq('person_id', personId)
+          .eq('number', formattedPhone)
+          .single()
+
+        if (!existingPhone) {
+          await supabase
+            .from('phone_numbers')
+            .insert({
+              person_id: personId,
+              number: formattedPhone,
+              phone_type: type,
+              status: 'unknown',
+              is_current: true,
+              first_seen: new Date().toISOString().split('T')[0],
+              last_seen: new Date().toISOString().split('T')[0],
+              source: 'import'
+            })
+        }
+      }
+    }
+  }
+}
+
+// Helper function to populate email addresses
+async function populateEmails(
+  personId: string, 
+  mappedRow: any, 
+  supabase: any
+): Promise<void> {
+  const emailFields = [
+    { field: 'email', type: 'personal' },
+    { field: 'work_email', type: 'work' },
+    { field: 'personal_email', type: 'personal' },
+    { field: 'alternate_email', type: 'other' }
+  ]
+
+  for (const { field, type } of emailFields) {
+    const emailValue = mappedRow[field]
+    if (emailValue && isValidEmail(emailValue)) {
+      const cleanEmail = emailValue.trim().toLowerCase()
+      
+      // Check if email already exists for this person
+      const { data: existingEmail } = await supabase
+        .from('emails')
+        .select('id')
+        .eq('person_id', personId)
+        .eq('email', cleanEmail)
+        .single()
+
+      if (!existingEmail) {
+        await supabase
+          .from('emails')
+          .insert({
+            person_id: personId,
+            email: cleanEmail,
+            email_type: type,
+            is_current: true,
+            first_seen: new Date().toISOString().split('T')[0],
+            last_seen: new Date().toISOString().split('T')[0],
+            source: 'import'
+          })
+      }
+    }
+  }
+}
+
+// Helper function to populate addresses
+async function populateAddresses(
+  personId: string, 
+  mappedRow: any, 
+  supabase: any
+): Promise<void> {
+  const addressFields = [
+    { 
+      address: mappedRow.address || mappedRow.street_address,
+      city: mappedRow.city,
+      state: mappedRow.state,
+      zipcode: mappedRow.zipcode || mappedRow.zip,
+      type: 'residential'
+    },
+    {
+      address: mappedRow.mailing_address,
+      city: mappedRow.mailing_city,
+      state: mappedRow.mailing_state,
+      zipcode: mappedRow.mailing_zipcode || mappedRow.mailing_zip,
+      type: 'mailing'
+    }
+  ]
+
+  for (const addr of addressFields) {
+    if (addr.address && addr.city && addr.state) {
+      const fullAddress = [
+        addr.address,
+        addr.city,
+        addr.state,
+        addr.zipcode
+      ].filter(Boolean).join(', ')
+
+      // Check if address already exists for this person
+      const { data: existingAddress } = await supabase
+        .from('person_addresses')
+        .select('id')
+        .eq('person_id', personId)
+        .eq('full_address', fullAddress)
+        .single()
+
+      if (!existingAddress) {
+        await supabase
+          .from('person_addresses')
+          .insert({
+            person_id: personId,
+            full_address: fullAddress,
+            address_line1: addr.address,
+            city: addr.city,
+            state: addr.state,
+            zipcode: addr.zipcode,
+            address_type: addr.type,
+            is_current: addr.type === 'residential',
+            first_seen: new Date().toISOString().split('T')[0],
+            last_seen: new Date().toISOString().split('T')[0],
+            source: 'import'
+          })
+      }
+    }
+  }
+}
+
+// Helper function to populate employment information
+async function populateEmployment(
+  personId: string, 
+  mappedRow: any, 
+  supabase: any
+): Promise<void> {
+  if (mappedRow.employer || mappedRow.employer_name) {
+    const employerName = mappedRow.employer || mappedRow.employer_name
+    const employerAddress = mappedRow.employer_address
+    const employerPhone = mappedRow.employer_phone
+    const position = mappedRow.position || mappedRow.job_title
+    const startDate = parseDate(mappedRow.employment_start_date)
+
+    // Check if employment record already exists
+    const { data: existingEmployment } = await supabase
+      .from('places_of_employment')
+      .select('id')
+      .eq('person_id', personId)
+      .eq('employer_name', employerName)
+      .single()
+
+    if (!existingEmployment) {
+      await supabase
+        .from('places_of_employment')
+        .insert({
+          person_id: personId,
+          employer_name: employerName,
+          address: employerAddress,
+          phone: employerPhone,
+          position: position,
+          start_date: startDate,
+          first_seen: new Date().toISOString().split('T')[0],
+          last_seen: new Date().toISOString().split('T')[0],
+          source: 'import'
+        })
+    }
+  }
+}
+
+// Helper function to populate vehicle information
+async function populateVehicles(
+  personId: string, 
+  mappedRow: any, 
+  supabase: any
+): Promise<void> {
+  const vehicleFields = [
+    {
+      vin: mappedRow.vehicle_vin,
+      make: mappedRow.vehicle_make,
+      model: mappedRow.vehicle_model,
+      year: mappedRow.vehicle_year,
+      license_plate: mappedRow.vehicle_license_plate,
+      state: mappedRow.vehicle_state
+    },
+    {
+      vin: mappedRow.car_vin,
+      make: mappedRow.car_make,
+      model: mappedRow.car_model,
+      year: mappedRow.car_year,
+      license_plate: mappedRow.car_license_plate,
+      state: mappedRow.car_state
+    }
+  ]
+
+  for (const vehicle of vehicleFields) {
+    if (vehicle.vin || (vehicle.make && vehicle.model)) {
+      // Check if vehicle already exists for this person
+      const existingQuery = vehicle.vin 
+        ? supabase.from('vehicles').select('id').eq('person_id', personId).eq('vin', vehicle.vin)
+        : supabase.from('vehicles').select('id').eq('person_id', personId).eq('make', vehicle.make).eq('model', vehicle.model).eq('year', vehicle.year)
+
+      const { data: existingVehicle } = await existingQuery.single()
+
+      if (!existingVehicle) {
+        await supabase
+          .from('vehicles')
+          .insert({
+            person_id: personId,
+            vin: vehicle.vin,
+            make: vehicle.make,
+            model: vehicle.model,
+            year: vehicle.year ? parseInt(vehicle.year) : null,
+            license_plate: vehicle.license_plate,
+            state: vehicle.state,
+            first_seen: new Date().toISOString().split('T')[0],
+            last_seen: new Date().toISOString().split('T')[0],
+            source: 'import'
+          })
+      }
+    }
+  }
+}
+
+// Helper function to populate bankruptcy information
+async function populateBankruptcies(
+  personId: string, 
+  mappedRow: any, 
+  supabase: any
+): Promise<void> {
+  if (mappedRow.bankruptcy_filed === 'true' || mappedRow.bankruptcy_filed === true) {
+    const filingDate = parseDate(mappedRow.bankruptcy_filing_date)
+    const dischargeDate = parseDate(mappedRow.bankruptcy_discharge_date)
+    const caseNumber = mappedRow.bankruptcy_case_number
+    const chapter = mappedRow.bankruptcy_chapter
+    const court = mappedRow.bankruptcy_court
+
+    // Check if bankruptcy record already exists
+    const { data: existingBankruptcy } = await supabase
+      .from('bankruptcies')
+      .select('id')
+      .eq('person_id', personId)
+      .eq('case_number', caseNumber)
+      .single()
+
+    if (!existingBankruptcy) {
+      await supabase
+        .from('bankruptcies')
+        .insert({
+          person_id: personId,
+          case_number: caseNumber,
+          filing_date: filingDate,
+          discharge_date: dischargeDate,
+          chapter: chapter,
+          court: court,
+          first_seen: new Date().toISOString().split('T')[0],
+          last_seen: new Date().toISOString().split('T')[0],
+          source: 'import'
+        })
+    }
+  }
+}
+
+// Helper function to populate all related data for a person
+async function populateRelatedData(
+  personId: string, 
+  mappedRow: any, 
+  supabase: any
+): Promise<void> {
+  try {
+    // Populate phone numbers
+    await populatePhoneNumbers(personId, mappedRow, supabase)
+    
+    // Populate email addresses
+    await populateEmails(personId, mappedRow, supabase)
+    
+    // Populate addresses
+    await populateAddresses(personId, mappedRow, supabase)
+    
+    // Populate employment information
+    await populateEmployment(personId, mappedRow, supabase)
+    
+    // Populate vehicle information
+    await populateVehicles(personId, mappedRow, supabase)
+    
+    // Populate bankruptcy information
+    await populateBankruptcies(personId, mappedRow, supabase)
+    
+  } catch (error) {
+    console.error(`[RELATED_DATA] Error populating related data for person ${personId}:`, error)
+    // Don't throw error - related data population should not fail the main import
+  }
+}
+
 // Data quality scoring and corruption detection
 interface DataQualityScore {
   overallScore: number // 0-100
@@ -1239,6 +1574,9 @@ async function processAccountRow(row: any, supabase: any, userId: string, portfo
       // Person exists, use their ID
       personId = existingPerson.id
       console.log(`[ACCOUNT] Found existing person with SSN ${formattedSSN}: ${personId}`)
+      
+      // Populate related data for existing person (in case new data is available)
+      await populateRelatedData(personId, mappedRow, supabase)
     } else {
       // Create new person record
       const personData = {
@@ -1282,6 +1620,9 @@ async function processAccountRow(row: any, supabase: any, userId: string, portfo
 
       personId = newPerson.id
       console.log(`[ACCOUNT] Created new person with SSN ${formattedSSN}: ${personId}`)
+      
+      // Populate related data for new person
+      await populateRelatedData(personId, mappedRow, supabase)
     }
 
     // Add person_id to debtor data
@@ -1584,8 +1925,9 @@ async function processAccountBatch(
   }
   
   // Bulk insert persons
+  let insertedPersons: any[] | null = null
   if (personData.length > 0) {
-    const { data: insertedPersons, error: personError } = await supabase
+    const { data: insertedPersonsData, error: personError } = await supabase
       .from('persons')
       .insert(personData)
       .select('id, ssn')
@@ -1605,6 +1947,7 @@ async function processAccountBatch(
         }
       }
     } else {
+      insertedPersons = insertedPersonsData
       // Update debtor records with correct person_id
       for (const debtor of debtorData) {
         if (debtor.person_id && debtor.person_id.startsWith('temp_')) {
@@ -1640,6 +1983,61 @@ async function processAccountBatch(
         }
       }
     }
+  }
+  
+  // Populate related data for all persons (both new and existing)
+  try {
+    // Create a map of SSN to person ID for easy lookup
+    const ssnToPersonId = new Map<string, string>()
+    
+    // Add newly inserted persons
+    if (insertedPersons) {
+      for (const person of insertedPersons) {
+        ssnToPersonId.set(person.ssn, person.id)
+      }
+    }
+    
+    // Add existing persons
+    if (existingPersonSSNs.length > 0) {
+      const { data: existingPersons } = await supabase
+        .from('persons')
+        .select('id, ssn')
+        .in('ssn', existingPersonSSNs)
+      
+      if (existingPersons) {
+        for (const person of existingPersons) {
+          ssnToPersonId.set(person.ssn, person.id)
+        }
+      }
+    }
+    
+    // Populate related data for each processed row
+    for (let i = 0; i < batch.length; i++) {
+      try {
+        const row = batch[i]
+        let mappedRow = row
+        
+        // Map row fields if needed
+        if (fieldMapping && Object.keys(fieldMapping).length > 0) {
+          mappedRow = {}
+          for (const [targetField, fileColumn] of Object.entries(fieldMapping)) {
+            mappedRow[targetField] = row[fileColumn]
+          }
+        }
+        
+        const formattedSSN = formatSSN(mappedRow.ssn)
+        if (formattedSSN && ssnToPersonId.has(formattedSSN)) {
+          const personId = ssnToPersonId.get(formattedSSN)!
+          await populateRelatedData(personId, mappedRow, supabase)
+        }
+      } catch (error: any) {
+        console.error(`[BULK_RELATED_DATA] Error populating related data for row ${i + 1}:`, error)
+        // Don't fail the entire batch for related data errors
+      }
+    }
+  } catch (error: any) {
+    console.error('[BULK_RELATED_DATA] Error in related data population:', error)
+    // Don't fail the entire batch for related data errors
   }
   
   // Bulk insert debtors

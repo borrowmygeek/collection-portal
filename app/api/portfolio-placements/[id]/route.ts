@@ -1,0 +1,148 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+// Only create client if environment variables are available
+const createSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Supabase environment variables not configured')
+  }
+  
+  return createClient(supabaseUrl, supabaseServiceKey)
+}
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const supabase = createSupabaseClient()
+    
+    const { data: placement, error } = await supabase
+      .from('master_portfolio_placements')
+      .select(`
+        *,
+        agency:master_agencies(
+          id,
+          name,
+          code,
+          status
+        )
+      `)
+      .eq('id', params.id)
+      .single()
+
+    if (error) {
+      console.error('Error fetching portfolio placement:', error)
+      return NextResponse.json(
+        { error: 'Portfolio placement not found' },
+        { status: 404 }
+      )
+    }
+
+    return NextResponse.json(placement)
+
+  } catch (error) {
+    console.error('Error:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const supabase = createSupabaseClient()
+    
+    const body = await request.json()
+    
+    // Validate required fields
+    if (!body.placement_amount || !body.account_count || 
+        !body.contingency_rate || !body.min_settlement_rate) {
+      return NextResponse.json(
+        { error: 'All required fields must be provided' },
+        { status: 400 }
+      )
+    }
+
+    // Update portfolio placement
+    const { data: placement, error } = await supabase
+      .from('master_portfolio_placements')
+      .update({
+        placement_amount: body.placement_amount,
+        account_count: body.account_count,
+        contingency_rate: body.contingency_rate,
+        flat_fee_rate: body.flat_fee_rate,
+        min_settlement_rate: body.min_settlement_rate,
+        status: body.status,
+        return_date: body.return_date,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', params.id)
+      .select(`
+        *,
+        agency:master_agencies(
+          id,
+          name,
+          code,
+          status
+        )
+      `)
+      .single()
+
+    if (error) {
+      console.error('Error updating portfolio placement:', error)
+      return NextResponse.json(
+        { error: 'Failed to update portfolio placement' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json(placement)
+
+  } catch (error) {
+    console.error('Error:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const supabase = createSupabaseClient()
+    
+    // Delete portfolio placement
+    const { error } = await supabase
+      .from('master_portfolio_placements')
+      .delete()
+      .eq('id', params.id)
+
+    if (error) {
+      console.error('Error deleting portfolio placement:', error)
+      return NextResponse.json(
+        { error: 'Failed to delete portfolio placement' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ message: 'Portfolio placement deleted successfully' })
+
+  } catch (error) {
+    console.error('Error:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+} 

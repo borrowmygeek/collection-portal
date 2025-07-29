@@ -77,14 +77,15 @@ interface Debtor {
   // original_bank_account_number, etc.) are intentionally NOT included in this interface
   // as they should only be displayed in account details view, not in general debtor information.
   
-  persons: Person
-  phone_numbers: {
-    id: string
-    number: string
-    phone_type: string
-    is_current: boolean
-    is_verified: boolean
-  }[]
+  persons: Person & {
+    phone_numbers: {
+      id: string
+      number: string
+      phone_type: string
+      is_current: boolean
+      is_verified: boolean
+    }[]
+  }
   master_portfolios: {
     id: string
     name: string
@@ -329,12 +330,12 @@ export default function DebtorsPage() {
 
                         {/* Contact Info */}
                         <div className="flex flex-wrap gap-4 mt-3 text-sm text-gray-600">
-                          {debtor.phone_numbers && debtor.phone_numbers.length > 0 && (
+                          {debtor.persons?.phone_numbers && debtor.persons.phone_numbers.length > 0 && (
                             <div className="flex items-center gap-2">
                               <PhoneIcon className="h-4 w-4" />
                               <span>
-                                {formatPhoneNumber(debtor.phone_numbers.find(p => p.is_current)?.number || debtor.phone_numbers[0].number)}
-                                {debtor.phone_numbers.length > 1 && ` (+${debtor.phone_numbers.length - 1} more)`}
+                                {formatPhoneNumber(debtor.persons.phone_numbers.find(p => p.is_current)?.number || debtor.persons.phone_numbers[0].number)}
+                                {debtor.persons.phone_numbers.length > 1 && ` (+${debtor.persons.phone_numbers.length - 1} more)`}
                               </span>
                             </div>
                           )}

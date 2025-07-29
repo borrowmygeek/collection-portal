@@ -77,14 +77,14 @@ export async function GET(request: NextRequest) {
           do_not_email,
           do_not_text,
           bankruptcy_filed,
-          active_military
-        ),
-        phone_numbers(
-          id,
-          number,
-          phone_type,
-          is_current,
-          is_verified
+          active_military,
+          phone_numbers(
+            id,
+            number,
+            phone_type,
+            is_current,
+            is_verified
+          )
         ),
         master_portfolios(
           id,
@@ -134,8 +134,8 @@ export async function GET(request: NextRequest) {
       // Normalize phone number (remove non-digits)
       const normalizedPhone = phoneSearch.replace(/\D/g, '')
       query = query.or(`
-        phone_numbers.number.ilike.%${normalizedPhone}%,
-        phone_numbers.number.ilike.%${phoneSearch}%
+        persons.phone_numbers.number.ilike.%${normalizedPhone}%,
+        persons.phone_numbers.number.ilike.%${phoneSearch}%
       `)
     }
 

@@ -131,12 +131,9 @@ export async function GET(request: NextRequest) {
 
     // Search by phone number
     if (phoneSearch) {
-      // Normalize phone number (remove non-digits)
+      // Simple phone search - just look for the phone number in the persons.phone_numbers
       const normalizedPhone = phoneSearch.replace(/\D/g, '')
-      query = query.or(`
-        persons.phone_numbers.number.ilike.%${normalizedPhone}%,
-        persons.phone_numbers.number.ilike.%${phoneSearch}%
-      `)
+      query = query.or(`persons.phone_numbers.number.ilike.%${normalizedPhone}%`)
     }
 
     const { data: debtors, error, count } = await query

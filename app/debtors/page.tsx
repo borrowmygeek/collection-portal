@@ -3,24 +3,34 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { authenticatedFetch } from '@/lib/supabase'
-import { formatPhoneNumber } from '@/lib/phone-utils'
 import { Sidebar } from '@/components/Sidebar'
 import DashboardHeader from '@/components/DashboardHeader'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { 
-  MagnifyingGlassIcon, 
-  PlusIcon, 
-  PhoneIcon, 
+import {
+  MagnifyingGlassIcon,
+  PlusIcon,
+  PhoneIcon,
   EnvelopeIcon,
   MapPinIcon,
   UserIcon,
   CurrencyDollarIcon,
   CalendarIcon
 } from '@heroicons/react/24/outline'
+
+// Simple phone formatting function
+const formatPhoneNumber = (phone: string) => {
+  const cleaned = phone.replace(/\D/g, '')
+  if (cleaned.length === 10) {
+    return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`
+  }
+  if (cleaned.length === 11 && cleaned.startsWith('1')) {
+    return `+1 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7)}`
+  }
+  return phone
+}
 
 interface Person {
   id: string

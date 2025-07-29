@@ -4,9 +4,39 @@ import * as XLSX from 'xlsx'
 import { authenticateApiRequest, requireRole } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
 import { logDataAccess, logDataModification, AUDIT_ACTIONS } from '@/lib/audit-log'
+import { sanitizeString, sanitizeEmail, sanitizePhone, sanitizeAddress, containsSqlInjection } from '@/lib/validation'
 
 // Force dynamic runtime for this API route
 export const dynamic = 'force-dynamic'
+
+// Simple validation function for import data
+function validateImportData(data: any): { isValid: boolean; errors: string[] } {
+  const errors: string[] = []
+  
+  // Check for SQL injection patterns
+  for (const [key, value] of Object.entries(data)) {
+    if (typeof value === 'string' && containsSqlInjection(value)) {
+      errors.push(`Potential SQL injection detected in field ${key}`)
+    }
+  }
+  
+  return { isValid: errors.length === 0, errors }
+}
+
+// Simple sanitization function for import data
+function sanitizeImportData(data: any): any {
+  const sanitized: any = {}
+  
+  for (const [key, value] of Object.entries(data)) {
+    if (typeof value === 'string') {
+      sanitized[key] = sanitizeString(value)
+    } else {
+      sanitized[key] = value
+    }
+  }
+  
+  return sanitized
+}
 
 // Only create client if environment variables are available
 const createSupabaseClient = () => {
@@ -1112,7 +1142,7 @@ async function processAccountRow(row: any, supabase: any, userId: string, portfo
       original_account_number: mappedRow.original_account_number,
       external_id: mappedRow.external_id,
       import_batch_id: jobId, // Set to the actual import job ID
-      ssn: formattedSSN, // Add SSN to debtors table
+      ssn: formattedSSN, // Keep SSN in debtors as account info
       
       // Creditor information
       original_creditor: mappedRow.original_creditor,
@@ -1182,13 +1212,89 @@ async function processAccountRow(row: any, supabase: any, userId: string, portfo
       // Foreign keys
       portfolio_id: portfolioId,
       client_id: portfolio.master_clients.id,
-      created_by: platformUser.id
+      created_by: platformUser.id,
+      person_id: '' // Will be populated after person creation
     }
+
+    // Create or find person record first
+    let personId: string
+    
+    // Check if person already exists by SSN
+    const { data: existingPerson, error: personLookupError } = await supabase
+      .from('persons')
+      .select('id')
+      .eq('ssn', formattedSSN)
+      .single()
+
+    if (personLookupError && personLookupError.code !== 'PGRST116') {
+      console.error(`[ACCOUNT] Person lookup error:`, personLookupError)
+      throw new Error(`Person lookup failed: ${personLookupError.message}`)
+    }
+
+    if (existingPerson) {
+      // Person exists, use their ID
+      personId = existingPerson.id
+      console.log(`[ACCOUNT] Found existing person with SSN ${formattedSSN}: ${personId}`)
+    } else {
+      // Create new person record
+      const personData = {
+        ssn: formattedSSN,
+        first_name: mappedRow.first_name || '',
+        last_name: mappedRow.last_name || '',
+        middle_name: mappedRow.middle_name || '',
+        full_name: `${mappedRow.first_name || ''} ${mappedRow.last_name || ''}`.trim(),
+        dob: parseDate(mappedRow.date_of_birth),
+        gender: mappedRow.gender,
+        occupation: mappedRow.occupation,
+        employer: mappedRow.employer,
+        do_not_call: mappedRow.do_not_call === 'true' || mappedRow.do_not_call === true,
+        do_not_mail: mappedRow.do_not_mail === 'true' || mappedRow.do_not_mail === true,
+        do_not_email: mappedRow.do_not_email === 'true' || mappedRow.do_not_email === true,
+        do_not_text: mappedRow.do_not_text === 'true' || mappedRow.do_not_text === true,
+        bankruptcy_filed: mappedRow.bankruptcy_filed === 'true' || mappedRow.bankruptcy_filed === true,
+        active_military: mappedRow.active_military === 'true' || mappedRow.active_military === true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+
+      // Validate and sanitize person data
+      const validationResult = validateImportData(personData)
+      if (!validationResult.isValid) {
+        throw new Error(`Person data validation failed: ${validationResult.errors.join(', ')}`)
+      }
+
+      const sanitizedPersonData = sanitizeImportData(personData)
+
+      const { data: newPerson, error: personInsertError } = await supabase
+        .from('persons')
+        .insert(sanitizedPersonData)
+        .select('id')
+        .single()
+
+      if (personInsertError) {
+        console.error(`[ACCOUNT] Person creation error:`, personInsertError)
+        throw new Error(`Failed to create person: ${personInsertError.message}`)
+      }
+
+      personId = newPerson.id
+      console.log(`[ACCOUNT] Created new person with SSN ${formattedSSN}: ${personId}`)
+    }
+
+    // Add person_id to debtor data
+    debtorData.person_id = personId
+
+    // Validate and sanitize debtor data
+    const validationResult = validateImportData(debtorData)
+    if (!validationResult.isValid) {
+      throw new Error(`Debtor data validation failed: ${validationResult.errors.join(', ')}`)
+    }
+
+    const sanitizedDebtorData = sanitizeImportData(debtorData)
 
     // Create debtor (account) with new organized fields
     const { data: insertedDebtor, error } = await supabase
       .from('debtors')
-      .insert(debtorData)
+      .insert(sanitizedDebtorData)
       .select()
 
     if (error) {
@@ -1494,6 +1600,41 @@ async function processAccountBatch(
           })
         }
       }
+    } else {
+      // Update debtor records with correct person_id
+      for (const debtor of debtorData) {
+        if (debtor.person_id && debtor.person_id.startsWith('temp_')) {
+          // Find the corresponding person by SSN
+          const person = insertedPersons?.find((p: any) => p.ssn === debtor.ssn)
+          if (person) {
+            debtor.person_id = person.id
+          }
+        }
+      }
+    }
+  }
+
+  // For existing persons, we need to get their IDs
+  const existingPersonSSNs = processedRows
+    .filter(row => !row.personData) // Only rows where person already exists
+    .map(row => row.debtorData.ssn)
+
+  if (existingPersonSSNs.length > 0) {
+    const { data: existingPersons } = await supabase
+      .from('persons')
+      .select('id, ssn')
+      .in('ssn', existingPersonSSNs)
+
+    if (existingPersons) {
+      // Update debtor records with correct person_id for existing persons
+      for (const debtor of debtorData) {
+        if (debtor.person_id && debtor.person_id.startsWith('temp_')) {
+          const person = existingPersons.find((p: any) => p.ssn === debtor.ssn)
+          if (person) {
+            debtor.person_id = person.id
+          }
+        }
+      }
     }
   }
   
@@ -1564,15 +1705,52 @@ async function preprocessAccountRow(
     return null // Skip duplicate in same portfolio
   }
 
-  // Prepare person data
-  const personData = {
-    ssn: formattedSSN,
-    first_name: mappedRow.first_name || '',
-    last_name: mappedRow.last_name || '',
-    middle_name: mappedRow.middle_name || '',
-    dob: parseDate(mappedRow.date_of_birth),
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
+  // Check if person already exists by SSN
+  const { data: existingPerson } = await supabase
+    .from('persons')
+    .select('id')
+    .eq('ssn', formattedSSN)
+    .single()
+
+  let personData: any = null
+  let personId: string
+
+  if (existingPerson) {
+    // Person exists, use their ID
+    personId = existingPerson.id
+  } else {
+    // Create new person record
+    personData = {
+      ssn: formattedSSN,
+      first_name: mappedRow.first_name || '',
+      last_name: mappedRow.last_name || '',
+      middle_name: mappedRow.middle_name || '',
+      full_name: `${mappedRow.first_name || ''} ${mappedRow.last_name || ''}`.trim(),
+      dob: parseDate(mappedRow.date_of_birth),
+      gender: mappedRow.gender,
+      occupation: mappedRow.occupation,
+      employer: mappedRow.employer,
+      do_not_call: mappedRow.do_not_call === 'true' || mappedRow.do_not_call === true,
+      do_not_mail: mappedRow.do_not_mail === 'true' || mappedRow.do_not_mail === true,
+      do_not_email: mappedRow.do_not_email === 'true' || mappedRow.do_not_email === true,
+      do_not_text: mappedRow.do_not_text === 'true' || mappedRow.do_not_text === true,
+      bankruptcy_filed: mappedRow.bankruptcy_filed === 'true' || mappedRow.bankruptcy_filed === true,
+      active_military: mappedRow.active_military === 'true' || mappedRow.active_military === true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+
+    // Validate and sanitize person data
+    const validationResult = validateImportData(personData)
+    if (!validationResult.isValid) {
+      throw new Error(`Person data validation failed: ${validationResult.errors.join(', ')}`)
+    }
+
+    personData = sanitizeImportData(personData)
+    
+    // For bulk processing, we'll need to get the person ID after insert
+    // We'll use a temporary ID that will be replaced after the bulk insert
+    personId = `temp_${Date.now()}_${Math.random()}`
   }
 
   // Prepare debtor data
@@ -1582,7 +1760,7 @@ async function preprocessAccountRow(
     original_account_number: originalAccountNumber,
     external_id: mappedRow.external_id,
     import_batch_id: jobId,
-    ssn: formattedSSN,
+    ssn: formattedSSN, // Keep SSN in debtors as account info
     
     // Creditor information
     original_creditor: mappedRow.original_creditor,
@@ -1652,11 +1830,23 @@ async function preprocessAccountRow(
     portfolio_id: portfolio.id,
     client_id: portfolio.client_id,
     created_by: platformUser.id,
+    person_id: personId, // Link to person
     
     // Timestamps
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   }
 
-  return { personData, debtorData }
+  // Validate and sanitize debtor data
+  const validationResult = validateImportData(debtorData)
+  if (!validationResult.isValid) {
+    throw new Error(`Debtor data validation failed: ${validationResult.errors.join(', ')}`)
+  }
+
+  const sanitizedDebtorData = sanitizeImportData(debtorData)
+
+  return { 
+    personData: personData ? sanitizeImportData(personData) : undefined, 
+    debtorData: sanitizedDebtorData 
+  }
 } 

@@ -107,15 +107,15 @@ export async function POST(request: NextRequest) {
     
     // If the job was processing and had a portfolio, we should clean up any partial data
     if (job.status === 'processing' && job.portfolio_id) {
-      // Delete any debtors that were created by this import job
+      // Delete any debt accounts that were created by this import job
       const { error: deleteError } = await supabase
-        .from('debtors')
+        .from('debt_accounts')
         .delete()
         .eq('import_batch_id', jobId)
       
       if (deleteError) {
-        console.error('Error cleaning up debtors from cancelled job:', deleteError)
-        // Don't fail the request, just log the error
+        console.error('Error cleaning up debt accounts from cancelled job:', deleteError)
+        // Don't fail the entire operation for this
       }
       
       // Check if this was the only import for the portfolio

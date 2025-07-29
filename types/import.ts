@@ -2,25 +2,86 @@
 
 export interface ImportJob {
   id: string
-  user_id: string
   file_name: string
-  file_size: number
-  file_type: 'csv' | 'xlsx' | 'xls'
   file_path: string | null
-  import_type: 'portfolios' | 'accounts' | 'debtors' | 'clients' | 'agencies'
+  file_size: number
+  file_type: string
+  import_type: 'portfolios' | 'accounts' | 'debt_accounts' | 'clients' | 'agencies'
+  portfolio_id: string | null
   template_id: string | null
-  portfolio_id: string | null // Portfolio created by this import job
+  user_id: string | null
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
-  progress: number
-  total_rows: number
-  processed_rows: number
-  successful_rows: number
-  failed_rows: number
-  errors: any[]
-  created_at: string
-  updated_at: string
-  completed_at: string | null
+  progress: number | null
+  total_rows: number | null
+  processed_rows: number | null
+  successful_rows: number | null
+  failed_rows: number | null
+  errors: any | null
   failed_rows_csv_path: string | null
+  created_at: string | null
+  updated_at: string | null
+  completed_at: string | null
+}
+
+export interface ImportJobCreate {
+  file_name: string
+  file_path: string | null
+  file_size: number
+  file_type: string
+  import_type: 'portfolios' | 'accounts' | 'debt_accounts' | 'clients' | 'agencies'
+  portfolio_id?: string | null
+  template_id?: string | null
+  user_id?: string | null
+}
+
+export interface ImportJobUpdate {
+  status?: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
+  progress?: number | null
+  total_rows?: number | null
+  processed_rows?: number | null
+  successful_rows?: number | null
+  failed_rows?: number | null
+  errors?: any | null
+  failed_rows_csv_path?: string | null
+  completed_at?: string | null
+}
+
+export interface ImportTemplate {
+  id: string
+  name: string
+  description: string | null
+  import_type: 'persons' | 'debt_accounts' | 'clients' | 'agencies'
+  required_columns: string[]
+  optional_columns: string[] | null
+  field_mappings: any | null
+  validation_rules: any | null
+  sample_data: any | null
+  created_by: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface ImportTemplateCreate {
+  name: string
+  description?: string | null
+  import_type: 'persons' | 'debt_accounts' | 'clients' | 'agencies'
+  required_columns: string[]
+  optional_columns?: string[] | null
+  field_mappings?: any | null
+  validation_rules?: any | null
+  sample_data?: any | null
+  created_by?: string | null
+}
+
+export interface ImportTemplateUpdate {
+  name?: string
+  description?: string | null
+  import_type?: 'persons' | 'debt_accounts' | 'clients' | 'agencies'
+  required_columns?: string[]
+  optional_columns?: string[] | null
+  field_mappings?: any | null
+  validation_rules?: any | null
+  sample_data?: any | null
 }
 
 export interface ImportError {
@@ -28,17 +89,6 @@ export interface ImportError {
   field: string
   message: string
   value?: string
-}
-
-export interface ImportTemplate {
-  id: string
-  name: string
-  description: string | null
-  import_type: 'portfolios' | 'accounts' | 'debtors' | 'clients' | 'agencies'
-  field_mappings: any
-  validation_rules: any
-  created_at: string
-  updated_at: string
 }
 
 export interface ValidationRule {

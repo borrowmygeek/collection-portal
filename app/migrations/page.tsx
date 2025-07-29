@@ -70,7 +70,7 @@ export default function MigrationsPage() {
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Badge variant="outline">Person-Centric Model</Badge>
-                <span className="text-sm text-muted-foreground">persons, debtors, person_addresses, phone_numbers, emails</span>
+                <span className="text-sm text-muted-foreground">persons, debt_accounts, person_addresses, phone_numbers, emails</span>
               </div>
               
               <div className="flex items-center gap-2">

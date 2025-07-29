@@ -354,63 +354,67 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    // 1. Get all person IDs from debtors in this import job
-    const { data: debtors, error: debtorsError } = await supabase
-      .from('debtors')
+    // 1. Get all person IDs from debt accounts in this import job
+    const { data: debtAccounts, error: debtAccountsError } = await supabase
+      .from('debt_accounts')
       .select('person_id')
       .eq('import_batch_id', jobId)
-      .not('person_id', 'is', null)
 
-    if (debtorsError) {
-      console.error('Error fetching debtors:', debtorsError)
+    if (debtAccountsError) {
+      console.error('Error fetching debt accounts:', debtAccountsError)
       return NextResponse.json(
-        { error: 'Failed to fetch debtors' },
+        { error: 'Failed to fetch debt accounts' },
         { status: 500 }
       )
     }
 
-    const personIds = debtors.map(d => d.person_id).filter(id => id !== null)
+    const personIds = debtAccounts.map(d => d.person_id).filter(id => id !== null)
 
-    // 2. Delete all debtors from this import job
-    const { error: debtorsDeleteError } = await supabase
-      .from('debtors')
+    // 2. Delete all debt accounts from this import job
+    const { error: debtAccountsDeleteError } = await supabase
+      .from('debt_accounts')
       .delete()
       .eq('import_batch_id', jobId)
 
-    if (debtorsDeleteError) {
-      console.error('Error deleting debtors:', debtorsDeleteError)
+    if (debtAccountsDeleteError) {
+      console.error('Error deleting debt accounts:', debtAccountsDeleteError)
       return NextResponse.json(
-        { error: 'Failed to delete debtors' },
+        { error: 'Failed to delete debt accounts' },
         { status: 500 }
       )
     }
 
-    // 3. Delete persons ONLY if they have no remaining debtors and no payments
+    // 3. Delete persons ONLY if they have no remaining debt accounts and no payments
     if (personIds.length > 0) {
-      // Get all person IDs that are still referenced by other debtors
-      const { data: remainingPersons } = await supabase
-        .from('debtors')
+      // Get all person IDs that are still referenced by other debt accounts
+      const { data: remainingDebtAccounts } = await supabase
+        .from('debt_accounts')
         .select('person_id')
-        .not('person_id', 'is', null)
+        .in('person_id', personIds)
 
-      const remainingPersonIds = remainingPersons?.map(d => d.person_id) || []
-      const orphanedPersonIds = personIds.filter(id => !remainingPersonIds.includes(id))
+      // Get all person IDs that have payments
+      const { data: personsWithPayments } = await supabase
+        .from('payments')
+        .select('person_id')
+        .in('person_id', personIds)
 
-      if (orphanedPersonIds.length > 0) {
-        // Check if any of these persons have payments
-        const { data: paymentPersons } = await supabase
-          .from('payments')
-          .select('person_id')
-          .in('person_id', orphanedPersonIds)
+      // Find person IDs that are safe to delete
+      const remainingPersonIds = new Set([
+        ...(remainingDebtAccounts?.map(d => d.person_id) || []),
+        ...(personsWithPayments?.map(p => p.person_id) || [])
+      ])
 
-        const paymentPersonIds = paymentPersons?.map(p => p.person_id) || []
-        const trulyOrphanedPersonIds = orphanedPersonIds.filter(id => !paymentPersonIds.includes(id))
+      const safeToDeletePersonIds = personIds.filter(id => !remainingPersonIds.has(id))
 
-        if (trulyOrphanedPersonIds.length > 0) {
-          await supabase
-            .from('persons')
-            .delete()
-            .in('id', trulyOrphanedPersonIds)
+      if (safeToDeletePersonIds.length > 0) {
+        const { error: personsDeleteError } = await supabase
+          .from('persons')
+          .delete()
+          .in('id', safeToDeletePersonIds)
+
+        if (personsDeleteError) {
+          console.error('Error deleting persons:', personsDeleteError)
+          // Don't fail the entire operation for this
         }
       }
     }
@@ -1088,7 +1092,7 @@ async function processAccountRow(row: any, supabase: any, userId: string, portfo
     let existingDebtors: any[] = []
     if (originalAccountNumber && formattedSSN) {
       const { data: duplicateCheck, error: duplicateCheckError } = await supabase
-        .from('debtors')
+        .from('debt_accounts')
         .select('id, account_number, current_balance, portfolio_id')
         .eq('original_account_number', originalAccountNumber)
         .eq('ssn', formattedSSN)
@@ -1116,7 +1120,7 @@ async function processAccountRow(row: any, supabase: any, userId: string, portfo
     let portfolioDebtors: any[] = []
     if (portfolioId) {
       const { data: portfolioData, error: portfolioError } = await supabase
-        .from('debtors')
+        .from('debt_accounts')
         .select('ssn, current_balance')
         .eq('portfolio_id', portfolioId)
         .not('current_balance', 'is', null)
@@ -1293,7 +1297,7 @@ async function processAccountRow(row: any, supabase: any, userId: string, portfo
 
     // Create debtor (account) with new organized fields
     const { data: insertedDebtor, error } = await supabase
-      .from('debtors')
+      .from('debt_accounts')
       .insert(sanitizedDebtorData)
       .select()
 
@@ -1307,7 +1311,7 @@ async function processAccountRow(row: any, supabase: any, userId: string, portfo
       })
       
       // Check if this is a duplicate constraint violation
-      if (error.code === '23505' && error.message.includes('idx_debtors_unique_account')) {
+      if (error.code === '23505' && error.message.includes('idx_debt_accounts_unique_account')) {
         return // Skip this row without throwing an error
       }
       
@@ -1641,7 +1645,7 @@ async function processAccountBatch(
   // Bulk insert debtors
   if (debtorData.length > 0) {
     const { error: debtorError } = await supabase
-      .from('debtors')
+      .from('debt_accounts')
       .insert(debtorData)
     
     if (debtorError) {
@@ -1649,7 +1653,7 @@ async function processAccountBatch(
       // Fall back to individual inserts if bulk fails
       for (const debtor of debtorData) {
         try {
-          await supabase.from('debtors').insert(debtor)
+          await supabase.from('debt_accounts').insert(debtor)
           results.successful++
         } catch (error: any) {
           results.failed++
@@ -1694,7 +1698,7 @@ async function preprocessAccountRow(
 
   // Check for duplicates (simplified for bulk processing)
   const { data: existingDebtors } = await supabase
-    .from('debtors')
+    .from('debt_accounts')
     .select('id')
     .eq('original_account_number', originalAccountNumber)
     .eq('ssn', formattedSSN)

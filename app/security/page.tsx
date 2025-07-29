@@ -316,7 +316,7 @@ export default function SecurityPage() {
                       <option value="">All resources</option>
                       <option value="users">Users</option>
                       <option value="portfolios">Portfolios</option>
-                      <option value="debtors">Debtors</option>
+                      <option value="debt_accounts">Debt Accounts</option>
                       <option value="agencies">Agencies</option>
                       <option value="clients">Clients</option>
                       <option value="security">Security</option>

@@ -47,17 +47,26 @@ export async function GET(request: NextRequest) {
       .from('persons')
       .select(`
         *,
-        debtors (
+        debt_accounts (
           id,
           account_number,
-          original_creditor,
-          original_balance,
+          original_account_number,
           current_balance,
-          charge_off_date,
+          original_balance,
+          status,
           collection_status,
           collection_priority,
-          portfolio_id,
-          client_id
+          charge_off_date,
+          last_payment_date,
+          master_portfolios!debt_accounts_portfolio_id_fkey(
+            id,
+            name
+          ),
+          master_clients!debt_accounts_client_id_fkey(
+            id,
+            name,
+            code
+          )
         ),
         person_addresses (*),
         phone_numbers (*),

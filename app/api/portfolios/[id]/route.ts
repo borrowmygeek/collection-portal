@@ -232,7 +232,7 @@ export async function DELETE(
 
     // Get all debtor IDs for this portfolio
     const { data: debtorIds, error: debtorIdsError } = await supabase
-      .from('debtors')
+      .from('debt_accounts')
       .select('id, person_id')
       .eq('portfolio_id', params.id)
 
@@ -247,49 +247,47 @@ export async function DELETE(
     const debtorIdArray = debtorIds.map(d => d.id)
     const personIds = debtorIds.map(d => d.person_id).filter(id => id !== null)
 
-    // If there are debtors in this portfolio, clean them up properly
-    if (debtorIdArray.length > 0) {
-      // 1. Delete all debtors from this portfolio
-      const { error: debtorsDeleteError } = await supabase
-        .from('debtors')
+    // If there are debt accounts in this portfolio, clean them up properly
+    if (portfolio) {
+      // 1. Delete all debt accounts from this portfolio
+      const { error: debtAccountsDeleteError } = await supabase
+        .from('debt_accounts')
         .delete()
         .eq('portfolio_id', params.id)
 
-      if (debtorsDeleteError) {
-        console.error('Error deleting debtors:', debtorsDeleteError)
+      if (debtAccountsDeleteError) {
+        console.error('Error deleting debt accounts:', debtAccountsDeleteError)
         return NextResponse.json(
-          { error: 'Failed to delete debtors' },
+          { error: 'Failed to delete debt accounts' },
           { status: 500 }
         )
       }
 
-      // 2. Delete persons ONLY if they have no remaining debtors and no payments
-      if (personIds.length > 0) {
-        // Get all person IDs that are still referenced by other debtors
-        const { data: remainingPersons } = await supabase
-          .from('debtors')
+      // 2. Delete persons ONLY if they have no remaining debt accounts and no payments
+      // Get all person IDs that are still referenced by other debt accounts
+      const { data: remainingDebtAccounts } = await supabase
+        .from('debt_accounts')
+        .select('person_id')
+        .not('person_id', 'is', null)
+
+      const remainingPersonIds = remainingDebtAccounts?.map(d => d.person_id) || []
+      const orphanedPersonIds = personIds.filter(id => !remainingPersonIds.includes(id))
+
+      if (orphanedPersonIds.length > 0) {
+        // Check if any of these persons have payments
+        const { data: paymentPersons } = await supabase
+          .from('payments')
           .select('person_id')
-          .not('person_id', 'is', null)
+          .in('person_id', orphanedPersonIds)
 
-        const remainingPersonIds = remainingPersons?.map(d => d.person_id) || []
-        const orphanedPersonIds = personIds.filter(id => !remainingPersonIds.includes(id))
+        const paymentPersonIds = paymentPersons?.map(p => p.person_id) || []
+        const trulyOrphanedPersonIds = orphanedPersonIds.filter(id => !paymentPersonIds.includes(id))
 
-        if (orphanedPersonIds.length > 0) {
-          // Check if any of these persons have payments
-          const { data: paymentPersons } = await supabase
-            .from('payments')
-            .select('person_id')
-            .in('person_id', orphanedPersonIds)
-
-          const paymentPersonIds = paymentPersons?.map(p => p.person_id) || []
-          const trulyOrphanedPersonIds = orphanedPersonIds.filter(id => !paymentPersonIds.includes(id))
-
-          if (trulyOrphanedPersonIds.length > 0) {
-            await supabase
-              .from('persons')
-              .delete()
-              .in('id', trulyOrphanedPersonIds)
-          }
+        if (trulyOrphanedPersonIds.length > 0) {
+          await supabase
+            .from('persons')
+            .delete()
+            .in('id', trulyOrphanedPersonIds)
         }
       }
     }

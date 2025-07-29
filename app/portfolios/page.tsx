@@ -212,7 +212,7 @@ export default function PortfoliosPage() {
                     className="btn-secondary flex items-center space-x-2"
                   >
                     <DocumentTextIcon className="h-5 w-5" />
-                    <span>Manage Accounts</span>
+                    <span>Debt Accounts</span>
                   </button>
                 </div>
               </div>

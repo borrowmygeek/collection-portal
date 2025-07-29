@@ -76,7 +76,7 @@ export interface MasterAgency {
   base_monthly_fee: number
   max_users: number
   max_portfolios: number
-  max_debtors: number
+  max_debt_accounts: number
   storage_limit_gb: number
   features_enabled: {
     api_access: boolean
@@ -171,7 +171,7 @@ export interface AgencyUsage {
   api_calls: number
   bandwidth_gb: number
   active_users: number
-  total_debtors: number
+  total_debt_accounts: number
   total_portfolios: number
   total_clients: number
   total_collected: number

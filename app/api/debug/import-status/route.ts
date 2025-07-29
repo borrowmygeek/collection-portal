@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { data: insertResult, error: insertError } = await supabase
-      .from('debtors')
+      .from('debt_accounts')
       .insert(testData)
       .select()
 

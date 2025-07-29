@@ -519,8 +519,8 @@ interface ImportTemplate {
   import_type: string
   field_mappings: any
   validation_rules: any
-  created_at: string
-  updated_at: string
+  created_at: string | null
+  updated_at: string | null
 }
 
 interface FieldMappingModalProps {

@@ -7,15 +7,9 @@ import { logDataAccess, logDataModification, AUDIT_ACTIONS } from '@/lib/audit-l
 // Force dynamic runtime for this API route
 export const dynamic = 'force-dynamic'
 
-// Only create client if environment variables are available
 const createSupabaseClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase environment variables not configured')
-  }
-  
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
   return createClient(supabaseUrl, supabaseServiceKey)
 }
 
@@ -31,7 +25,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Rate limiting
-    const rateLimitResult = await rateLimitByUser(user.auth_user_id, 200, 15 * 60 * 1000)
+    const rateLimitResult = await rateLimitByUser(user.id, 100, 15 * 60 * 1000)
     if (!rateLimitResult.success) {
       return NextResponse.json(
         { error: 'Rate limit exceeded', retryAfter: rateLimitResult.retryAfter },
@@ -39,45 +33,25 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Check if user has permission to view debtors
-    if (!requireRole(user, ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user'])) {
-      return NextResponse.json(
-        { error: 'Insufficient permissions' },
-        { status: 403 }
-      )
+    // Check if user has permission to view debt accounts
+    if (user.role !== 'platform_admin' && user.role !== 'agency_admin' && user.role !== 'agency_user') {
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
     }
 
-    const { searchParams } = new URL(request.url)
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '50')
-    const portfolioId = searchParams.get('portfolioId')
-    const status = searchParams.get('status')
-    const search = searchParams.get('search')
-    const phoneSearch = searchParams.get('phone') // New phone search parameter
-    const offset = (page - 1) * limit
-
     const supabase = createSupabaseClient()
+    const { searchParams } = new URL(request.url)
     
+    // Build query
     let query = supabase
-      .from('debtors')
+      .from('debt_accounts')
       .select(`
         *,
-        persons(
+        persons!debt_accounts_person_id_fkey(
           id,
-          ssn,
           full_name,
           first_name,
           last_name,
-          dob,
-          gender,
-          occupation,
-          employer,
-          do_not_call,
-          do_not_mail,
-          do_not_email,
-          do_not_text,
-          bankruptcy_filed,
-          active_military,
+          ssn,
           phone_numbers(
             id,
             number,
@@ -86,87 +60,110 @@ export async function GET(request: NextRequest) {
             is_verified
           )
         ),
-        master_portfolios(
+        master_portfolios!debt_accounts_portfolio_id_fkey(
           id,
           name,
-          portfolio_type
+          description
         ),
-        master_clients(
+        master_clients!debt_accounts_client_id_fkey(
           id,
           name,
           code
         ),
-        platform_users!debtors_assigned_collector_id_fkey(
+        platform_users!debt_accounts_assigned_collector_id_fkey(
           id,
+          full_name,
           email
         )
-      `, { count: 'exact' })
-      .order('created_at', { ascending: false })
-
-    // Filter by user's agency if not platform admin
-    if (user.role !== 'platform_admin') {
-      if (user.agency_id) {
-        query = query.eq('agency_id', user.agency_id)
-      }
-    }
-
-    if (portfolioId) {
-      query = query.eq('portfolio_id', portfolioId)
-    }
-
-    if (status) {
-      query = query.eq('collection_status', status)
-    }
-
-    // Search by name, account number, or creditor
-    if (search) {
-      query = query.or(`
-        persons.full_name.ilike.%${search}%,
-        persons.first_name.ilike.%${search}%,
-        persons.last_name.ilike.%${search}%,
-        account_number.ilike.%${search}%,
-        original_creditor_name.ilike.%${search}%
       `)
+
+    // Apply filters
+    const search = searchParams.get('search')
+    const phoneSearch = searchParams.get('phone')
+    const portfolioId = searchParams.get('portfolioId')
+    const statusFilter = searchParams.get('status')
+    const priorityFilter = searchParams.get('priority')
+    const limit = parseInt(searchParams.get('limit') || '50')
+    const offset = parseInt(searchParams.get('offset') || '0')
+
+    if (search) {
+      query = query.or(`full_name.ilike.%${search}%,account_number.ilike.%${search}%,original_creditor_name.ilike.%${search}%`)
     }
 
-    // Search by phone number
     if (phoneSearch) {
       // Simple phone search - just look for the phone number in the persons.phone_numbers
       const normalizedPhone = phoneSearch.replace(/\D/g, '')
       query = query.or(`persons.phone_numbers.number.ilike.%${normalizedPhone}%`)
     }
 
-    const { data: debtors, error, count } = await query
-      .range(offset, offset + limit - 1)
+    if (portfolioId) {
+      query = query.eq('portfolio_id', portfolioId)
+    }
+
+    if (statusFilter && statusFilter !== 'all') {
+      query = query.eq('status', statusFilter)
+    }
+
+    if (priorityFilter && priorityFilter !== 'all') {
+      query = query.eq('collection_priority', priorityFilter)
+    }
+
+    // Apply agency filtering for non-platform admins
+    if (user.role !== 'platform_admin') {
+      query = query.eq('master_portfolios.agency_id', user.agency_id)
+    }
+
+    // Get total count for pagination
+    const { count } = await query
+
+    // Apply pagination
+    query = query.range(offset, offset + limit - 1)
+
+    // Execute query
+    const { data: debtAccounts, error, count: actualCount } = await query
 
     if (error) {
-      console.error('Error fetching debtors:', error)
+      console.error('Error fetching debt accounts:', error)
       return NextResponse.json(
-        { error: 'Failed to fetch debtors' },
+        { error: 'Failed to fetch debt accounts' },
         { status: 500 }
       )
     }
 
-    // Log successful data access
+    // Log data access
     await logDataAccess(
-      user.auth_user_id,
+      user.id,
       AUDIT_ACTIONS.DATA_VIEW,
-      'debtor',
+      'debt_accounts',
       undefined,
-      { count: debtors?.length || 0, total: count || 0 },
+      {
+        search,
+        phoneSearch,
+        portfolioId,
+        statusFilter,
+        priorityFilter,
+        limit,
+        offset
+      },
       request
     )
 
     return NextResponse.json({
-      debtors: debtors || [],
-      total: count || 0,
-      page,
-      limit,
-      totalPages: Math.ceil((count || 0) / limit)
+      success: true,
+      data: {
+        count: debtAccounts?.length || 0, 
+        total: count || 0,
+        debtAccounts: debtAccounts || [],
+        pagination: {
+          limit,
+          offset,
+          hasMore: (offset + limit) < (count || 0)
+        }
+      }
     })
 
   } catch (error) {
-    console.error('Error:', error)
+    console.error('Error in debt accounts GET:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -186,7 +183,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Rate limiting
-    const rateLimitResult = await rateLimitByUser(user.auth_user_id, 50, 5 * 60 * 1000)
+    const rateLimitResult = await rateLimitByUser(user.id, 50, 5 * 60 * 1000)
     if (!rateLimitResult.success) {
       return NextResponse.json(
         { error: 'Rate limit exceeded', retryAfter: rateLimitResult.retryAfter },
@@ -194,83 +191,59 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if user has permission to create debtors
-    if (!requireRole(user, ['platform_admin', 'agency_admin', 'client_admin'])) {
+    // Check if user has permission to create debt accounts
+    if (user.role !== 'platform_admin' && user.role !== 'agency_admin') {
       return NextResponse.json(
-        { error: 'Insufficient permissions to create debtors' },
+        { error: 'Insufficient permissions to create debt accounts' },
         { status: 403 }
       )
     }
 
-    const supabase = createSupabaseClient()
     const body = await request.json()
-    
-    // Validate required fields
-    if (!body.portfolio_id || !body.account_number || !body.current_balance) {
-      return NextResponse.json(
-        { error: 'Portfolio ID, account number, and current balance are required' },
-        { status: 400 }
-      )
+    const supabase = createSupabaseClient()
+
+    // Add created_by field
+    const debtAccountData = {
+      ...body,
+      created_by: user.id
     }
 
-    // Check if user has access to the specified portfolio
-    if (user.role !== 'platform_admin') {
-      return NextResponse.json(
-        { error: 'Insufficient permissions to create debtors' },
-        { status: 403 }
-      )
-    }
-
-    // Log the attempt
-    await logDataAccess(
-      user.auth_user_id,
-      AUDIT_ACTIONS.DATA_CREATE,
-      'debtor',
-      undefined,
-      { 
-        portfolio_id: body.portfolio_id,
-        account_number: body.account_number,
-        current_balance: body.current_balance
-      },
-      request
-    )
-
-    // Create debtor (simplified - in practice, this would be more complex)
-    const { data: debtor, error } = await supabase
-      .from('debtors')
-      .insert([{
-        portfolio_id: body.portfolio_id,
-        account_number: body.account_number,
-        current_balance: body.current_balance,
-        original_balance: body.original_balance || body.current_balance,
-        status: body.status || 'active',
-        agency_id: user.agency_id || null
-      }])
+    // Insert debt account
+    const { data: newDebtAccount, error } = await supabase
+      .from('debt_accounts')
+      .insert(debtAccountData)
       .select()
       .single()
 
     if (error) {
-      console.error('Error creating debtor:', error)
+      console.error('Error creating debt account:', error)
       return NextResponse.json(
-        { error: 'Failed to create debtor' },
+        { error: 'Failed to create debt account' },
         { status: 500 }
       )
     }
 
-    // Log successful creation
+    // Log data modification
     await logDataModification(
-      user.auth_user_id,
+      user.id,
       AUDIT_ACTIONS.DATA_CREATE,
-      'debtor',
-      debtor.id,
-      { debtor_id: debtor.id },
+      'debt_accounts',
+      newDebtAccount.id,
+      {
+        account_number: newDebtAccount.account_number,
+        original_account_number: newDebtAccount.original_account_number,
+        portfolio_id: newDebtAccount.portfolio_id
+      },
       request
     )
 
-    return NextResponse.json(debtor)
+    return NextResponse.json({
+      success: true,
+      data: newDebtAccount
+    })
 
   } catch (error) {
-    console.error('Error:', error)
+    console.error('Error in debt accounts POST:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

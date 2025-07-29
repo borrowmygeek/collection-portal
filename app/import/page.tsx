@@ -952,7 +952,7 @@ export default function ImportPage() {
                               )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {new Date(job.created_at).toLocaleString()}
+                              {job.created_at ? new Date(job.created_at).toLocaleString() : 'N/A'}
                             </td>
                             {isPlatformAdmin && (
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -1069,7 +1069,7 @@ export default function ImportPage() {
                 <ul className="text-sm text-red-700 mt-2 space-y-1 list-disc list-inside">
                   <li>The import job record</li>
                   <li>The uploaded file</li>
-                  <li>All accounts/debtors from this specific import</li>
+                  <li>All accounts/debt accounts from this specific import</li>
                   <li>All payment records for these accounts</li>
                   <li>All call logs and notes for these accounts</li>
                   <li>All skip-trace data for these accounts (addresses, phones, relatives, etc.)</li>

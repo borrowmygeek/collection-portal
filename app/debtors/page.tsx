@@ -35,59 +35,87 @@ const formatPhoneNumber = (phone: string) => {
 
 interface Person {
   id: string
-  ssn: string | null
-  full_name: string | null
-  first_name: string | null
-  last_name: string | null
-  dob: string | null
-  gender: string | null
-  occupation: string | null
-  employer: string | null
-  do_not_call: boolean
-  do_not_mail: boolean
-  do_not_email: boolean
-  do_not_text: boolean
-  bankruptcy_filed: boolean
-  active_military: boolean
+  full_name: string
+  first_name: string
+  last_name: string
+  ssn: string
+  phone_numbers: {
+    id: string
+    number: string
+    phone_type: string
+    is_current: boolean
+    is_verified: boolean
+  }[]
 }
 
-interface Debtor {
+interface DebtAccount {
   id: string
-  person_id: string | null
-  portfolio_id: string
-  client_id: string
-  account_number: string | null
+  account_number: string
+  original_account_number: string
+  external_id: string | null
+  import_batch_id: string | null
+  ssn: string | null
   original_creditor: string | null
   original_creditor_name: string | null
-  original_balance: number
-  current_balance: number
+  original_balance: number | null
+  current_balance: number | null
+  last_payment_amount: number | null
+  promise_to_pay_amount: number | null
+  settlement_offered: number | null
+  interest_rate: number | null
+  late_fees: number | null
+  collection_fees: number | null
+  legal_fees: number | null
+  total_fees: number | null
+  payment_plan_amount: number | null
+  account_type: string | null
+  account_subtype: string | null
+  account_status: string | null
   charge_off_date: string | null
   date_opened: string | null
   last_activity_date: string | null
-  account_type: string
-  account_subtype: string | null
-  account_status: string
-  collection_status: string
-  collection_priority: string
-  assigned_collector_id: string | null
-  last_payment_amount: number | null
   last_payment_date: string | null
-  total_payments: number
-  payment_count: number
-  last_contact_date: string | null
-  next_contact_date: string | null
-  do_not_call: boolean
-  hardship_declared: boolean
+  promise_to_pay_date: string | null
+  next_payment_date: string | null
+  status: string | null
+  collection_status: string | null
+  collection_priority: string | null
+  contact_method: string | null
+  contact_result: string | null
+  contact_notes: string | null
+  payment_plan_frequency: string | null
+  payment_frequency: string | null
+  total_payments: number | null
+  payment_count: number | null
+  average_payment: number | null
+  largest_payment: number | null
+  do_not_call: boolean | null
+  hardship_declared: boolean | null
   hardship_type: string | null
+  settlement_accepted: boolean | null
   data_source: string | null
-  external_id: string | null
+  skip_trace_quality_score: number | null
   notes: string | null
+  original_bank_name: string | null
+  original_bank_routing_number: string | null
+  original_bank_account_number: string | null
+  original_bank_account_type: string | null
+  original_bank_account_holder: string | null
+  original_bank_verified: boolean | null
+  original_bank_verification_date: string | null
+  original_bank_verification_method: string | null
+  portfolio_id: string | null
+  client_id: string | null
   created_by: string | null
-  
-  // NOTE: Original bank information fields (original_bank_name, original_bank_routing_number, 
-  // original_bank_account_number, etc.) are intentionally NOT included in this interface
-  // as they should only be displayed in account details view, not in general debtor information.
-  
+  person_id: string | null
+  assigned_collector_id: string | null
+  data_quality_score: number | null
+  data_quality_risk_level: string | null
+  data_quality_warnings: string | null
+  data_quality_flags: string | null
+  duplicate_notes: string | null
+  created_at: string
+  updated_at: string
   persons: Person & {
     phone_numbers: {
       id: string
@@ -100,15 +128,16 @@ interface Debtor {
   master_portfolios: {
     id: string
     name: string
-    portfolio_type: string
-  }
+    description: string | null
+  } | null
   master_clients: {
     id: string
     name: string
     code: string
-  }
+  } | null
   platform_users: {
     id: string
+    full_name: string
     email: string
   } | null
 }
@@ -116,7 +145,7 @@ interface Debtor {
 export default function DebtorsPage() {
   const { user } = useAuth()
   const searchParams = useSearchParams()
-  const [debtors, setDebtors] = useState<Debtor[]>([])
+  const [debtAccounts, setDebtAccounts] = useState<DebtAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [phoneSearch, setPhoneSearch] = useState('')
@@ -133,283 +162,199 @@ export default function DebtorsPage() {
   }, [searchParams])
 
   useEffect(() => {
-    fetchDebtors()
+    fetchDebtAccounts()
   }, [searchTerm, phoneSearch, statusFilter, priorityFilter])
 
-  const fetchDebtors = async () => {
+  const fetchDebtAccounts = async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
       
-      if (searchTerm) {
-        params.append('search', searchTerm)
-      }
-      
-      if (phoneSearch) {
-        params.append('phone', phoneSearch)
-      }
-      
-      if (statusFilter !== 'all') {
-        params.append('status', statusFilter)
-      }
+      if (searchTerm) params.append('search', searchTerm)
+      if (phoneSearch) params.append('phone', phoneSearch)
+      if (statusFilter !== 'all') params.append('status', statusFilter)
+      if (priorityFilter !== 'all') params.append('priority', priorityFilter)
 
       const response = await authenticatedFetch(`/api/debtors?${params.toString()}`)
-      
       if (!response.ok) {
-        throw new Error('Failed to fetch debtors')
+        throw new Error('Failed to fetch debt accounts')
       }
 
       const data = await response.json()
-      setDebtors(data.debtors || [])
+      setDebtAccounts(data.data.debtAccounts || [])
     } catch (error) {
-      console.error('Error fetching debtors:', error)
+      console.error('Error fetching debt accounts:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  const filteredDebtors = (debtors || []).filter(debtor => {
-    const matchesSearch = 
-      debtor.account_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      debtor.original_creditor_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      debtor.persons?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      debtor.persons?.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      debtor.persons?.last_name?.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredDebtAccounts = (debtAccounts || []).filter(debtAccount => {
+    const matchesSearch = !searchTerm || 
+      debtAccount.persons?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      debtAccount.account_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      debtAccount.original_creditor_name?.toLowerCase().includes(searchTerm.toLowerCase())
 
-    const matchesStatus = statusFilter === 'all' || debtor.collection_status === statusFilter
-    const matchesPriority = priorityFilter === 'all' || debtor.collection_priority === priorityFilter
+    const matchesStatus = statusFilter === 'all' || debtAccount.status === statusFilter
+    const matchesPriority = priorityFilter === 'all' || debtAccount.collection_priority === priorityFilter
 
     return matchesSearch && matchesStatus && matchesPriority
   })
 
-  const getStatusColor = (status: string) => {
+  const getPriorityColor = (priority: string | null) => {
+    switch (priority) {
+      case 'high': return 'bg-red-100 text-red-800'
+      case 'medium': return 'bg-yellow-100 text-yellow-800'
+      case 'low': return 'bg-green-100 text-green-800'
+      default: return 'bg-gray-100 text-gray-800'
+    }
+  }
+
+  const getStatusColor = (status: string | null) => {
     switch (status) {
-      case 'new': return 'bg-blue-100 text-blue-800'
-      case 'contacted': return 'bg-yellow-100 text-yellow-800'
-      case 'promise_to_pay': return 'bg-green-100 text-green-800'
-      case 'payment_received': return 'bg-green-100 text-green-800'
-      case 'resolved': return 'bg-gray-100 text-gray-800'
-      case 'do_not_call': return 'bg-red-100 text-red-800'
-      case 'bankruptcy': return 'bg-purple-100 text-purple-800'
+      case 'active': return 'bg-green-100 text-green-800'
+      case 'settled': return 'bg-blue-100 text-blue-800'
+      case 'bankruptcy': return 'bg-red-100 text-red-800'
       case 'deceased': return 'bg-gray-100 text-gray-800'
       default: return 'bg-gray-100 text-gray-800'
     }
   }
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'low': return 'bg-green-100 text-green-800'
-      case 'normal': return 'bg-blue-100 text-blue-800'
-      case 'high': return 'bg-yellow-100 text-yellow-800'
-      case 'urgent': return 'bg-red-100 text-red-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
-  }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount)
-  }
-
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'N/A'
-    return new Date(dateString).toLocaleDateString()
-  }
-
-  if (loading) {
+  if (!user) {
     return (
-      <div className="flex h-screen bg-gray-100">
+      <div className="flex h-screen">
         <Sidebar />
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <DashboardHeader title="Debtors" />
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="animate-pulse">
-              <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
-              <div className="space-y-4">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className="h-32 bg-gray-200 rounded"></div>
-                ))}
-              </div>
-            </div>
-          </div>
+        <div className="flex-1 flex items-center justify-center">
+          <p>Loading...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="flex h-screen bg-gray-100">
+    <div className="flex h-screen bg-gray-50">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <DashboardHeader title="Debtors" />
+        <DashboardHeader title="Debt Accounts" />
         
         <div className="flex-1 overflow-y-auto p-6">
-          {/* Filters */}
-          <div className="mb-6 space-y-4">
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex-1">
+          <div className="max-w-7xl mx-auto">
+            {/* Search and Filters */}
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="relative">
                   <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                   <Input
-                    placeholder="Search by name, account number, or creditor..."
+                    type="text"
+                    placeholder="Search by name, account, or creditor..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
                   />
                 </div>
-              </div>
-              <div className="flex-1">
+                
                 <div className="relative">
                   <PhoneIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                   <Input
+                    type="text"
                     placeholder="Search by phone number..."
                     value={phoneSearch}
                     onChange={(e) => setPhoneSearch(e.target.value)}
                     className="pl-10"
                   />
                 </div>
+
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="active">Active</option>
+                  <option value="settled">Settled</option>
+                  <option value="bankruptcy">Bankruptcy</option>
+                  <option value="deceased">Deceased</option>
+                </select>
+
+                <select
+                  value={priorityFilter}
+                  onChange={(e) => setPriorityFilter(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Priorities</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                  <option value="normal">Normal</option>
+                </select>
               </div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-[180px] border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Statuses</option>
-                <option value="new">New</option>
-                <option value="contacted">Contacted</option>
-                <option value="promise_to_pay">Promise to Pay</option>
-                <option value="payment_received">Payment Received</option>
-                <option value="resolved">Resolved</option>
-                <option value="do_not_call">Do Not Call</option>
-                <option value="bankruptcy">Bankruptcy</option>
-                <option value="deceased">Deceased</option>
-              </select>
-
-              <select
-                value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
-                className="w-[180px] border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="all">All Priorities</option>
-                <option value="low">Low</option>
-                <option value="normal">Normal</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
-              <Button className="w-full sm:w-auto">
-                <PlusIcon className="h-5 w-5 mr-2" />
-                Add Debtor
-              </Button>
             </div>
-          </div>
 
-          {/* Results */}
-          <div className="space-y-4">
-            {filteredDebtors.length === 0 ? (
-              <Card>
-                <CardContent className="p-8 text-center">
-                  <p className="text-gray-500">No debtors found matching your criteria.</p>
-                </CardContent>
-              </Card>
-            ) : (
-              filteredDebtors.map((debtor) => (
-                <Card key={debtor.id} className="hover:shadow-md transition-shadow">
-                  <CardContent className="p-6">
-                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                      {/* Person Info */}
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                          <UserIcon className="h-5 w-5 text-gray-400" />
-                          <h3 className="text-lg font-semibold">
-                            {debtor.persons?.full_name || `${debtor.persons?.first_name || ''} ${debtor.persons?.last_name || ''}`.trim() || 'Unknown Person'}
-                          </h3>
-                          {debtor.persons?.ssn && (
-                            <Badge variant="outline" className="text-xs">
-                              SSN: ***-**-{debtor.persons.ssn.slice(-4)}
-                            </Badge>
-                          )}
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm text-gray-600">
-                          <div className="flex items-center gap-2">
-                            <CurrencyDollarIcon className="h-4 w-4" />
-                            <span>Account: {debtor.account_number || 'N/A'}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span>Creditor: {debtor.original_creditor_name || 'N/A'}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span>Balance: {formatCurrency(debtor.current_balance)}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <CalendarIcon className="h-4 w-4" />
-                            <span>Charge-off: {formatDate(debtor.charge_off_date)}</span>
-                          </div>
-                        </div>
-
-                        {/* Contact Info */}
-                        <div className="flex flex-wrap gap-4 mt-3 text-sm text-gray-600">
-                          {debtor.persons?.phone_numbers && debtor.persons.phone_numbers.length > 0 && (
-                            <div className="flex items-center gap-2">
-                              <PhoneIcon className="h-4 w-4" />
-                              <span>
-                                {formatPhoneNumber(debtor.persons.phone_numbers.find(p => p.is_current)?.number || debtor.persons.phone_numbers[0].number)}
-                                {debtor.persons.phone_numbers.length > 1 && ` (+${debtor.persons.phone_numbers.length - 1} more)`}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Status and Actions */}
-                      <div className="flex flex-col items-end gap-3">
+            {/* Results */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {loading ? (
+                <div className="col-span-full text-center py-8">
+                  <p>Loading debt accounts...</p>
+                </div>
+              ) : filteredDebtAccounts.length === 0 ? (
+                <div className="col-span-full text-center py-8">
+                  <p className="text-gray-500">No debt accounts found matching your criteria.</p>
+                </div>
+              ) : (
+                filteredDebtAccounts.map((debtAccount) => (
+                  <Card key={debtAccount.id} className="hover:shadow-lg transition-shadow">
+                    <CardHeader className="pb-3">
+                      <div className="flex justify-between items-start">
+                        <CardTitle className="text-lg font-semibold">
+                          {debtAccount.persons?.full_name || 'Unknown Person'}
+                        </CardTitle>
                         <div className="flex gap-2">
-                          <Badge className={getStatusColor(debtor.collection_status)}>
-                            {debtor.collection_status.replace('_', ' ').toUpperCase()}
+                          <Badge className={getPriorityColor(debtAccount.collection_priority)}>
+                            {debtAccount.collection_priority || 'normal'}
                           </Badge>
-                          <Badge className={getPriorityColor(debtor.collection_priority)}>
-                            {debtor.collection_priority.toUpperCase()}
+                          <Badge className={getStatusColor(debtAccount.status)}>
+                            {debtAccount.status || 'unknown'}
                           </Badge>
                         </div>
-                        
-                        <div className="text-sm text-gray-600 text-right">
-                          <div>Portfolio: {debtor.master_portfolios?.name}</div>
-                          <div>Client: {debtor.master_clients?.name}</div>
-                          {debtor.platform_users && (
-                            <div>Collector: {debtor.platform_users.email}</div>
-                          )}
-                        </div>
-
-                        <div className="flex gap-2">
-                          <Button variant="outline" size="sm">
-                            View Details
-                          </Button>
-                          <Button variant="outline" size="sm">
-                            Edit
-                          </Button>
-                        </div>
                       </div>
-                    </div>
-
-                    {/* Compliance Flags */}
-                    {(debtor.do_not_call || debtor.persons?.do_not_mail || debtor.persons?.do_not_email || debtor.persons?.do_not_text || debtor.persons?.bankruptcy_filed || debtor.hardship_declared) && (
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <div className="flex flex-wrap gap-2">
-                          {debtor.do_not_call && <Badge variant="destructive">Do Not Call</Badge>}
-                          {debtor.persons?.do_not_mail && <Badge variant="destructive">Do Not Mail</Badge>}
-                          {debtor.persons?.do_not_email && <Badge variant="destructive">Do Not Email</Badge>}
-                          {debtor.persons?.do_not_text && <Badge variant="destructive">Do Not Text</Badge>}
-                          {debtor.persons?.bankruptcy_filed && <Badge variant="destructive">Bankruptcy</Badge>}
-                          {debtor.hardship_declared && <Badge variant="destructive">Hardship</Badge>}
-                        </div>
+                    </CardHeader>
+                    
+                    <CardContent className="space-y-3">
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <UserIcon className="h-4 w-4" />
+                        <span>Account: {debtAccount.account_number || 'N/A'}</span>
                       </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ))
-            )}
+                      
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <CurrencyDollarIcon className="h-4 w-4" />
+                        <span>Balance: ${debtAccount.current_balance?.toLocaleString() || '0'}</span>
+                      </div>
+                      
+                      {debtAccount.persons?.phone_numbers && debtAccount.persons.phone_numbers.length > 0 && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <PhoneIcon className="h-4 w-4" />
+                          <span>
+                            {formatPhoneNumber(debtAccount.persons.phone_numbers[0].number)}
+                          </span>
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <MapPinIcon className="h-4 w-4" />
+                        <span>Creditor: {debtAccount.original_creditor_name || 'Unknown'}</span>
+                      </div>
+                      
+                      {debtAccount.last_payment_date && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <CalendarIcon className="h-4 w-4" />
+                          <span>Last Payment: {new Date(debtAccount.last_payment_date).toLocaleDateString()}</span>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -86,7 +86,7 @@ export async function PUT(
         base_monthly_fee: body.base_monthly_fee,
         max_users: body.max_users,
         max_portfolios: body.max_portfolios,
-        max_debtors: body.max_debtors,
+        max_debt_accounts: body.max_debt_accounts,
         storage_limit_gb: body.storage_limit_gb,
         status: body.status,
         notes: body.notes,

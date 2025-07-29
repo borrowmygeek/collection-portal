@@ -218,35 +218,33 @@ export default function DebtorsPage() {
                   />
                 </div>
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue value={statusFilter} placeholder="Filter by status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="new">New</SelectItem>
-                  <SelectItem value="contacted">Contacted</SelectItem>
-                  <SelectItem value="promise_to_pay">Promise to Pay</SelectItem>
-                  <SelectItem value="payment_received">Payment Received</SelectItem>
-                  <SelectItem value="resolved">Resolved</SelectItem>
-                  <SelectItem value="do_not_call">Do Not Call</SelectItem>
-                  <SelectItem value="bankruptcy">Bankruptcy</SelectItem>
-                  <SelectItem value="deceased">Deceased</SelectItem>
-                </SelectContent>
-              </Select>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="w-[180px] border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Statuses</option>
+                <option value="new">New</option>
+                <option value="contacted">Contacted</option>
+                <option value="promise_to_pay">Promise to Pay</option>
+                <option value="payment_received">Payment Received</option>
+                <option value="resolved">Resolved</option>
+                <option value="do_not_call">Do Not Call</option>
+                <option value="bankruptcy">Bankruptcy</option>
+                <option value="deceased">Deceased</option>
+              </select>
 
-              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue value={priorityFilter} placeholder="Filter by priority" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Priorities</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                  <SelectItem value="normal">Normal</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="urgent">Urgent</SelectItem>
-                </SelectContent>
-              </Select>
+              <select
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className="w-[180px] border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Priorities</option>
+                <option value="low">Low</option>
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
               <Button className="w-full sm:w-auto">
                 <PlusIcon className="h-5 w-5 mr-2" />
                 Add Debtor

@@ -165,25 +165,15 @@ async function processPhoneNumber(phoneNumber: string | null, method: string, re
       phone_type,
       is_current,
       is_verified,
-      persons!inner(
+      persons(
         id,
         full_name,
         first_name,
         last_name,
         ssn
-      ),
-      debtors!inner(
-        id,
-        account_number,
-        current_balance,
-        collection_status,
-        collection_priority,
-        master_portfolios(name),
-        master_clients(name)
       )
     `)
-    .in('number', phoneVariations)
-    .or(phoneVariations.map(p => `number.like.%${p}%`).join(','))
+    .or(phoneVariations.map(p => `number.eq.${p}`).join(','))
   
   if (phoneError) {
     console.error('Error searching phone numbers:', phoneError)
@@ -201,6 +191,52 @@ async function processPhoneNumber(phoneNumber: string | null, method: string, re
     )
   }
   
+  // If we found phone numbers, search for associated debtors
+  let results: Array<{
+    phone_number: string
+    person: any
+    debtors: any[]
+  }> = []
+  if (phoneNumbers && phoneNumbers.length > 0) {
+    const personIds = phoneNumbers
+      .map(pn => pn.person_id)
+      .filter(id => id !== null)
+    
+    if (personIds.length > 0) {
+      const { data: debtors, error: debtorsError } = await supabase
+        .from('debtors')
+        .select(`
+          id,
+          person_id,
+          account_number,
+          current_balance,
+          collection_status,
+          collection_priority,
+          master_portfolios(name),
+          master_clients(name)
+        `)
+        .in('person_id', personIds)
+      
+      if (debtorsError) {
+        console.error('Error searching debtors:', debtorsError)
+      } else {
+        // Match phone numbers with their associated debtors
+        results = phoneNumbers.map(pn => ({
+          phone_number: pn.number,
+          person: pn.persons,
+          debtors: debtors?.filter(d => d.person_id === pn.person_id) || []
+        }))
+      }
+    } else {
+      // Phone numbers found but no associated persons
+      results = phoneNumbers.map(pn => ({
+        phone_number: pn.number,
+        person: pn.persons,
+        debtors: []
+      }))
+    }
+  }
+  
   // Log the webhook processing
   await logSecurityEvent(
     'system',
@@ -212,12 +248,6 @@ async function processPhoneNumber(phoneNumber: string | null, method: string, re
   )
   
   // Return the found debtors
-  const results = phoneNumbers?.map(pn => ({
-    phone_number: pn.number,
-    person: pn.persons,
-    debtors: pn.debtors
-  })) || []
-  
   console.log(`Found ${results.length} matches for phone number ${normalizedPhone}`)
   
   return NextResponse.json({

@@ -291,67 +291,63 @@ export default function SecurityPage() {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div>
                     <Label htmlFor="action">Action</Label>
-                    <Select value={filter.action} onValueChange={(value) => setFilter({...filter, action: value})}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue value={filter.action} placeholder="All actions" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">All actions</SelectItem>
-                        <SelectItem value="LOGIN_SUCCESS">Login Success</SelectItem>
-                        <SelectItem value="LOGIN_FAILED">Login Failed</SelectItem>
-                        <SelectItem value="LOGOUT">Logout</SelectItem>
-                        <SelectItem value="DATA_ACCESS">Data Access</SelectItem>
-                        <SelectItem value="DATA_MODIFICATION">Data Modification</SelectItem>
-                        <SelectItem value="SECURITY_VIOLATION">Security Violation</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <select
+                      value={filter.action}
+                      onChange={(e) => setFilter({...filter, action: e.target.value})}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">All actions</option>
+                      <option value="LOGIN_SUCCESS">Login Success</option>
+                      <option value="LOGIN_FAILED">Login Failed</option>
+                      <option value="LOGOUT">Logout</option>
+                      <option value="DATA_ACCESS">Data Access</option>
+                      <option value="DATA_MODIFICATION">Data Modification</option>
+                      <option value="SECURITY_VIOLATION">Security Violation</option>
+                    </select>
                   </div>
 
                   <div>
                     <Label htmlFor="resourceType">Resource Type</Label>
-                    <Select value={filter.resourceType} onValueChange={(value) => setFilter({...filter, resourceType: value})}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue value={filter.resourceType} placeholder="All resources" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">All resources</SelectItem>
-                        <SelectItem value="users">Users</SelectItem>
-                        <SelectItem value="portfolios">Portfolios</SelectItem>
-                        <SelectItem value="debtors">Debtors</SelectItem>
-                        <SelectItem value="agencies">Agencies</SelectItem>
-                        <SelectItem value="clients">Clients</SelectItem>
-                        <SelectItem value="security">Security</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <select
+                      value={filter.resourceType}
+                      onChange={(e) => setFilter({...filter, resourceType: e.target.value})}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">All resources</option>
+                      <option value="users">Users</option>
+                      <option value="portfolios">Portfolios</option>
+                      <option value="debtors">Debtors</option>
+                      <option value="agencies">Agencies</option>
+                      <option value="clients">Clients</option>
+                      <option value="security">Security</option>
+                    </select>
                   </div>
 
                   <div>
                     <Label htmlFor="success">Status</Label>
-                    <Select value={filter.success} onValueChange={(value) => setFilter({...filter, success: value})}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue value={filter.success} placeholder="All statuses" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">All statuses</SelectItem>
-                        <SelectItem value="true">Success</SelectItem>
-                        <SelectItem value="false">Failed</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <select
+                      value={filter.success}
+                      onChange={(e) => setFilter({...filter, success: e.target.value})}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">All statuses</option>
+                      <option value="true">Success</option>
+                      <option value="false">Failed</option>
+                    </select>
                   </div>
 
                   <div>
                     <Label htmlFor="dateRange">Time Range</Label>
-                    <Select value={filter.dateRange} onValueChange={(value) => setFilter({...filter, dateRange: value})}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue value={filter.dateRange} placeholder="Select range" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1h">Last Hour</SelectItem>
-                        <SelectItem value="24h">Last 24 Hours</SelectItem>
-                        <SelectItem value="7d">Last 7 Days</SelectItem>
-                        <SelectItem value="30d">Last 30 Days</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <select
+                      value={filter.dateRange}
+                      onChange={(e) => setFilter({...filter, dateRange: e.target.value})}
+                      className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="1h">Last Hour</option>
+                      <option value="24h">Last 24 Hours</option>
+                      <option value="7d">Last 7 Days</option>
+                      <option value="30d">Last 30 Days</option>
+                    </select>
                   </div>
                 </div>
               </CardContent>

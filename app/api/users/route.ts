@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest, requirePlatformAdmin } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
 import { logUserAction, logSecurityEvent, AUDIT_ACTIONS } from '@/lib/audit-log'
+import { validateInput, createUserSchema, sanitizeObject, commonSanitizers, containsSqlInjection } from '@/lib/validation'
 
 // Force dynamic runtime for this API route
 export const dynamic = 'force-dynamic'
@@ -176,29 +177,72 @@ export async function POST(request: NextRequest) {
     const supabase = createSupabaseClient()
     const body = await request.json()
     
+    // Input validation and sanitization
+    const validationResult = await validateInput(createUserSchema, body)
+    if (!validationResult.success) {
+      console.log('Validation failed:', validationResult.errors)
+      await logSecurityEvent(
+        user.id,
+        AUDIT_ACTIONS.SECURITY_VIOLATION,
+        { endpoint: '/api/users', method: 'POST', validationErrors: validationResult.errors },
+        false,
+        'Input validation failed',
+        request
+      )
+      return NextResponse.json(
+        { error: 'Invalid input data', details: validationResult.errors },
+        { status: 400 }
+      )
+    }
+
+    // Sanitize the validated data
+    const sanitizedData = sanitizeObject(validationResult.data, {
+      email: commonSanitizers.email,
+      full_name: commonSanitizers.name,
+      role: commonSanitizers.status,
+      password: (pwd: string) => pwd, // Don't sanitize passwords
+      agency_id: (id: string) => id // Don't sanitize UUIDs
+    })
+
+    // Additional security checks
+    if (containsSqlInjection(sanitizedData.email) || containsSqlInjection(sanitizedData.full_name)) {
+      await logSecurityEvent(
+        user.id,
+        AUDIT_ACTIONS.SECURITY_VIOLATION,
+        { endpoint: '/api/users', method: 'POST', suspiciousInput: true },
+        false,
+        'Potential SQL injection attempt',
+        request
+      )
+      return NextResponse.json(
+        { error: 'Invalid input detected' },
+        { status: 400 }
+      )
+    }
+    
     // Log the attempt (without sensitive data)
     await logUserAction(
       user.id,
       AUDIT_ACTIONS.USER_CREATE,
       'new',
       { 
-        email: body.email,
-        role: body.role,
-        full_name: body.full_name,
-        agency_id: body.agency_id || null
+        email: sanitizedData.email,
+        role: sanitizedData.role,
+        full_name: sanitizedData.full_name,
+        agency_id: sanitizedData.agency_id || null
       },
       request
     )
 
-    console.log('Received user creation request:', { ...body, password: '[REDACTED]' })
+    console.log('Received user creation request:', { ...sanitizedData, password: '[REDACTED]' })
     
-    // Validate required fields
-    if (!body.email || !body.full_name || !body.role || !body.password) {
-      console.log('Missing required fields:', { email: !!body.email, full_name: !!body.full_name, role: !!body.role, password: !!body.password })
+    // Validate required fields (redundant but good for logging)
+    if (!sanitizedData.email || !sanitizedData.full_name || !sanitizedData.role || !sanitizedData.password) {
+      console.log('Missing required fields:', { email: !!sanitizedData.email, full_name: !!sanitizedData.full_name, role: !!sanitizedData.role, password: !!sanitizedData.password })
       await logSecurityEvent(
         user.id,
         AUDIT_ACTIONS.SECURITY_VIOLATION,
-        { endpoint: '/api/users', method: 'POST', missingFields: { email: !!body.email, full_name: !!body.full_name, role: !!body.role, password: !!body.password } },
+        { endpoint: '/api/users', method: 'POST', missingFields: { email: !!sanitizedData.email, full_name: !!sanitizedData.full_name, role: !!sanitizedData.role, password: !!sanitizedData.password } },
         false,
         'Missing required fields',
         request
@@ -210,11 +254,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user already exists
-    console.log('Checking for existing user with email:', body.email)
+    console.log('Checking for existing user with email:', sanitizedData.email)
     const { data: existingUser, error: checkError } = await supabase
       .from('platform_users')
       .select('id')
-      .eq('email', body.email)
+      .eq('email', sanitizedData.email)
       .single()
 
     if (checkError && checkError.code !== 'PGRST116') {
@@ -252,12 +296,12 @@ export async function POST(request: NextRequest) {
     // Create auth user first
     console.log('Creating auth user...')
     const { data: authUser, error: createAuthError } = await supabase.auth.admin.createUser({
-      email: body.email,
-      password: body.password,
+      email: sanitizedData.email,
+      password: sanitizedData.password,
       email_confirm: true,
       user_metadata: {
-        full_name: body.full_name,
-        role: body.role
+        full_name: sanitizedData.full_name,
+        role: sanitizedData.role
       }
     })
 

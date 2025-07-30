@@ -4,33 +4,114 @@
 -- 1. Rename the main table
 ALTER TABLE debtors RENAME TO debt_accounts;
 
--- 2. Update all indexes
-ALTER INDEX idx_debtors_person_id RENAME TO idx_debt_accounts_person_id;
-ALTER INDEX idx_debtors_portfolio_id RENAME TO idx_debt_accounts_portfolio_id;
-ALTER INDEX idx_debtors_client_id RENAME TO idx_debt_accounts_client_id;
-ALTER INDEX idx_debtors_account_number RENAME TO idx_debt_accounts_account_number;
-ALTER INDEX idx_debtors_original_account_number RENAME TO idx_debt_accounts_original_account_number;
-ALTER INDEX idx_debtors_external_id RENAME TO idx_debt_accounts_external_id;
-ALTER INDEX idx_debtors_created_by RENAME TO idx_debt_accounts_created_by;
-ALTER INDEX idx_debtors_assigned_collector_id RENAME TO idx_debt_accounts_assigned_collector_id;
-ALTER INDEX idx_debtors_status RENAME TO idx_debt_accounts_status;
-ALTER INDEX idx_debtors_collection_status RENAME TO idx_debt_accounts_collection_status;
-ALTER INDEX idx_debtors_charge_off_date RENAME TO idx_debt_accounts_charge_off_date;
-ALTER INDEX idx_debtors_current_balance RENAME TO idx_debt_accounts_current_balance;
-ALTER INDEX idx_debtors_import_batch_id RENAME TO idx_debt_accounts_import_batch_id;
-ALTER INDEX idx_debtors_original_creditor RENAME TO idx_debt_accounts_original_creditor;
-ALTER INDEX idx_debtors_account_subtype RENAME TO idx_debt_accounts_account_subtype;
-ALTER INDEX idx_debtors_date_opened RENAME TO idx_debt_accounts_date_opened;
-ALTER INDEX idx_debtors_last_activity RENAME TO idx_debt_accounts_last_activity;
-ALTER INDEX idx_debtors_import_batch RENAME TO idx_debt_accounts_import_batch;
-ALTER INDEX idx_debtors_account_type RENAME TO idx_debt_accounts_account_type;
-ALTER INDEX idx_debtors_ssn RENAME TO idx_debt_accounts_ssn;
-ALTER INDEX idx_debtors_data_quality_risk_level RENAME TO idx_debt_accounts_data_quality_risk_level;
-ALTER INDEX idx_debtors_data_quality_score RENAME TO idx_debt_accounts_data_quality_score;
-ALTER INDEX idx_debtors_original_bank_name RENAME TO idx_debt_accounts_original_bank_name;
-ALTER INDEX idx_debtors_original_bank_routing RENAME TO idx_debt_accounts_original_bank_routing;
-ALTER INDEX idx_debtors_original_bank_verified RENAME TO idx_debt_accounts_original_bank_verified;
-ALTER INDEX idx_debtors_unique_account RENAME TO idx_debt_accounts_unique_account;
+-- 2. Update all indexes (only if they exist)
+DO $$
+BEGIN
+    -- Check and rename indexes only if they exist
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_person_id') THEN
+        ALTER INDEX idx_debtors_person_id RENAME TO idx_debt_accounts_person_id;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_portfolio_id') THEN
+        ALTER INDEX idx_debtors_portfolio_id RENAME TO idx_debt_accounts_portfolio_id;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_client_id') THEN
+        ALTER INDEX idx_debtors_client_id RENAME TO idx_debt_accounts_client_id;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_account_number') THEN
+        ALTER INDEX idx_debtors_account_number RENAME TO idx_debt_accounts_account_number;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_original_account_number') THEN
+        ALTER INDEX idx_debtors_original_account_number RENAME TO idx_debt_accounts_original_account_number;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_external_id') THEN
+        ALTER INDEX idx_debtors_external_id RENAME TO idx_debt_accounts_external_id;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_created_by') THEN
+        ALTER INDEX idx_debtors_created_by RENAME TO idx_debt_accounts_created_by;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_assigned_collector_id') THEN
+        ALTER INDEX idx_debtors_assigned_collector_id RENAME TO idx_debt_accounts_assigned_collector_id;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_status') THEN
+        ALTER INDEX idx_debtors_status RENAME TO idx_debt_accounts_status;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_collection_status') THEN
+        ALTER INDEX idx_debtors_collection_status RENAME TO idx_debt_accounts_collection_status;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_charge_off_date') THEN
+        ALTER INDEX idx_debtors_charge_off_date RENAME TO idx_debt_accounts_charge_off_date;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_current_balance') THEN
+        ALTER INDEX idx_debtors_current_balance RENAME TO idx_debt_accounts_current_balance;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_import_batch_id') THEN
+        ALTER INDEX idx_debtors_import_batch_id RENAME TO idx_debt_accounts_import_batch_id;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_original_creditor') THEN
+        ALTER INDEX idx_debtors_original_creditor RENAME TO idx_debt_accounts_original_creditor;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_account_subtype') THEN
+        ALTER INDEX idx_debtors_account_subtype RENAME TO idx_debt_accounts_account_subtype;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_date_opened') THEN
+        ALTER INDEX idx_debtors_date_opened RENAME TO idx_debt_accounts_date_opened;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_last_activity') THEN
+        ALTER INDEX idx_debtors_last_activity RENAME TO idx_debt_accounts_last_activity;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_import_batch') THEN
+        ALTER INDEX idx_debtors_import_batch RENAME TO idx_debt_accounts_import_batch;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_account_type') THEN
+        ALTER INDEX idx_debtors_account_type RENAME TO idx_debt_accounts_account_type;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_ssn') THEN
+        ALTER INDEX idx_debtors_ssn RENAME TO idx_debt_accounts_ssn;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_data_quality_risk_level') THEN
+        ALTER INDEX idx_debtors_data_quality_risk_level RENAME TO idx_debt_accounts_data_quality_risk_level;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_data_quality_score') THEN
+        ALTER INDEX idx_debtors_data_quality_score RENAME TO idx_debt_accounts_data_quality_score;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_original_bank_name') THEN
+        ALTER INDEX idx_debtors_original_bank_name RENAME TO idx_debt_accounts_original_bank_name;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_original_bank_routing') THEN
+        ALTER INDEX idx_debtors_original_bank_routing RENAME TO idx_debt_accounts_original_bank_routing;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_original_bank_verified') THEN
+        ALTER INDEX idx_debtors_original_bank_verified RENAME TO idx_debt_accounts_original_bank_verified;
+    END IF;
+    
+    IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_debtors_unique_account') THEN
+        ALTER INDEX idx_debtors_unique_account RENAME TO idx_debt_accounts_unique_account;
+    END IF;
+END $$;
 
 -- 3. Update foreign key constraints
 ALTER TABLE debt_accounts 
@@ -71,8 +152,8 @@ CREATE POLICY "Allow debt accounts creation for imports" ON debt_accounts
   FOR INSERT TO authenticated, service_role
   WITH CHECK (true);
 
-CREATE POLICY "Allow full access for service role and platform admins" ON debt_accounts
-  FOR ALL TO service_role, platform_admin
+CREATE POLICY "Allow full access for service role" ON debt_accounts
+  FOR ALL TO service_role
   USING (true)
   WITH CHECK (true);
 
@@ -83,28 +164,6 @@ CREATE POLICY "Users can view their own debt accounts" ON debt_accounts
 CREATE POLICY "Users can update their own debt accounts" ON debt_accounts
   FOR UPDATE TO authenticated
   USING (created_by = auth.uid());
-
-CREATE POLICY "Agency users can view portfolio debt accounts" ON debt_accounts
-  FOR SELECT TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM master_portfolios mp
-      JOIN platform_users pu ON mp.agency_id = pu.agency_id
-      WHERE mp.id = debt_accounts.portfolio_id
-      AND pu.auth_user_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "Agency users can update portfolio debt accounts" ON debt_accounts
-  FOR UPDATE TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM master_portfolios mp
-      JOIN platform_users pu ON mp.agency_id = pu.agency_id
-      WHERE mp.id = debt_accounts.portfolio_id
-      AND pu.auth_user_id = auth.uid()
-    )
-  );
 
 CREATE POLICY "Users can view debt accounts they created" ON debt_accounts
   FOR SELECT TO authenticated
@@ -118,29 +177,33 @@ CREATE POLICY "Users can update debt accounts they created" ON debt_accounts
   FOR UPDATE TO authenticated
   USING (created_by = auth.uid());
 
+-- Platform admins can view all debt accounts
 CREATE POLICY "Platform admins can view all debt accounts" ON debt_accounts
-  FOR SELECT TO platform_admin
-  USING (true);
-
-CREATE POLICY "Agency users can view debt accounts in their portfolios" ON debt_accounts
-  FOR SELECT TO authenticated
-  USING (
+  FOR ALL USING (
     EXISTS (
-      SELECT 1 FROM master_portfolios mp
-      JOIN platform_users pu ON mp.agency_id = pu.agency_id
-      WHERE mp.id = debt_accounts.portfolio_id
-      AND pu.auth_user_id = auth.uid()
+      SELECT 1 FROM auth.users
+      WHERE auth.users.id = auth.uid()
+      AND auth.users.raw_user_meta_data->>'role' = 'platform_admin'
     )
   );
 
-CREATE POLICY "Agency users can update debt accounts in their portfolios" ON debt_accounts
-  FOR UPDATE TO authenticated
-  USING (
+-- Agency users can view debt accounts in their portfolios (simplified)
+CREATE POLICY "Agency users can view debt accounts in their portfolios" ON debt_accounts
+  FOR SELECT USING (
     EXISTS (
-      SELECT 1 FROM master_portfolios mp
-      JOIN platform_users pu ON mp.agency_id = pu.agency_id
-      WHERE mp.id = debt_accounts.portfolio_id
-      AND pu.auth_user_id = auth.uid()
+      SELECT 1 FROM platform_users pu
+      WHERE pu.auth_user_id = auth.uid()
+      AND pu.role IN ('agency_admin', 'agency_user')
+    )
+  );
+
+-- Agency users can update debt accounts in their portfolios (simplified)
+CREATE POLICY "Agency users can update debt accounts in their portfolios" ON debt_accounts
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM platform_users pu
+      WHERE pu.auth_user_id = auth.uid()
+      AND pu.role IN ('agency_admin', 'agency_user')
     )
   );
 

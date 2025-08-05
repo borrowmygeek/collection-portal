@@ -122,12 +122,34 @@ export async function POST(request: NextRequest) {
       }
     } else {
       console.log('🔍 Import preview: Parsing Excel file...')
-      // For now, return basic structure for Excel files
-      headers = ['Column 1', 'Column 2', 'Column 3']
-      rows = [
-        { 'Column 1': 'Sample 1', 'Column 2': 'Sample 2', 'Column 3': 'Sample 3' },
-        { 'Column 1': 'Sample 4', 'Column 2': 'Sample 5', 'Column 3': 'Sample 6' }
-      ]
+      // Parse Excel file using xlsx library
+      try {
+        const workbook = XLSX.read(fileBuffer, { type: 'buffer' })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        
+        // Convert worksheet to JSON with headers
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
+        
+        if (jsonData.length > 0) {
+          headers = jsonData[0].map(h => String(h || '').trim())
+          rows = jsonData.slice(1).map(row => {
+            const obj: any = {}
+            headers.forEach((header, index) => {
+              obj[header] = row[index] ? String(row[index]).trim() : ''
+            })
+            return obj
+          })
+        }
+        
+        console.log('✅ Import preview: Excel file parsed successfully')
+      } catch (error) {
+        console.error('❌ Import preview: Error parsing Excel file:', error)
+        return NextResponse.json(
+          { error: 'Error parsing Excel file. Please ensure it\'s a valid Excel file.' },
+          { status: 400 }
+        )
+      }
     }
     
     console.log('✅ Import preview: File parsed successfully:', {

@@ -182,14 +182,42 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Import API: File validation passed')
 
-    // TEMPORARILY RETURN SUCCESS WITHOUT DATABASE OPERATIONS
-    console.log('🔍 Import API: SKIPPING database operations for testing...')
-    
-    return NextResponse.json({
-      success: true,
-      job_id: 'test-job-id',
-      message: 'Import API test successful (database operations skipped)'
-    })
+    // Test Supabase client creation
+    console.log('🔍 Import API: Testing Supabase client creation...')
+    try {
+      const supabase = createAdminSupabaseClient()
+      console.log('✅ Import API: Supabase admin client created successfully')
+      
+      // Test basic database connection
+      console.log('🔍 Import API: Testing database connection...')
+      const { data: testData, error: testError } = await supabase
+        .from('import_jobs')
+        .select('id')
+        .limit(1)
+      
+      if (testError) {
+        console.error('❌ Import API: Database connection test failed:', testError)
+        return NextResponse.json(
+          { error: `Database connection failed: ${testError.message}` },
+          { status: 500 }
+        )
+      }
+      
+      console.log('✅ Import API: Database connection test successful')
+      
+      return NextResponse.json({
+        success: true,
+        job_id: 'test-job-id',
+        message: 'Import API test successful (database connection verified)'
+      })
+      
+    } catch (error) {
+      console.error('❌ Import API: Error creating Supabase client:', error)
+      return NextResponse.json(
+        { error: `Supabase client creation failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
+        { status: 500 }
+      )
+    }
 
   } catch (error) {
     console.error('❌ Import API: Unexpected error:', error)

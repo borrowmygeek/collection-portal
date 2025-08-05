@@ -21,6 +21,9 @@ const createAdminSupabaseClient = () => {
 export async function POST(request: NextRequest) {
   try {
     console.log('🔍 Import preview: Starting request processing')
+    console.log('🔍 Import preview: Request method:', request.method)
+    console.log('🔍 Import preview: Request URL:', request.url)
+    console.log('🔍 Import preview: Request headers:', Object.fromEntries(request.headers.entries()))
     
     // Authenticate the request
     const { user, error: authError } = await authenticateApiRequest(request)
@@ -51,8 +54,10 @@ export async function POST(request: NextRequest) {
     // Add error handling around FormData processing
     let formData: FormData
     try {
+      console.log('🔍 Import preview: About to parse FormData...')
       formData = await request.formData()
       console.log('✅ Import preview: FormData parsed successfully')
+      console.log('🔍 Import preview: FormData entries:', Array.from(formData.entries()).map(([key, value]) => ({ key, valueType: typeof value, valueSize: value instanceof File ? value.size : 'N/A' })))
     } catch (formDataError) {
       console.error('❌ Import preview: FormData parsing failed:', formDataError)
       return NextResponse.json(
@@ -67,11 +72,15 @@ export async function POST(request: NextRequest) {
     let template_id: string
     
     try {
+      console.log('🔍 Import preview: Extracting form fields...')
       file = formData.get('file') as File
       import_type = formData.get('import_type') as string
       template_id = formData.get('template_id') as string
       
       console.log('✅ Import preview: Form fields extracted successfully')
+      console.log('🔍 Import preview: File:', file ? { name: file.name, size: file.size, type: file.type } : 'null')
+      console.log('🔍 Import preview: Import type:', import_type)
+      console.log('🔍 Import preview: Template ID:', template_id)
     } catch (fieldError) {
       console.error('❌ Import preview: Field extraction failed:', fieldError)
       return NextResponse.json(

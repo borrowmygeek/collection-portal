@@ -341,6 +341,9 @@ function validateRows(rows: any[], importType: string, columnMapping: Record<str
       case 'accounts':
         validateAccountRow(row, rowNumber, columnMapping, errors)
         break
+      case 'skip_trace':
+        validateSkipTraceRow(row, rowNumber, columnMapping, errors)
+        break
     }
   })
   
@@ -483,8 +486,177 @@ function validateAgencyRow(row: any, rowNumber: number, columnMapping: Record<st
 }
 
 function validateAccountRow(row: any, rowNumber: number, columnMapping: Record<string, string>, errors: any[]) {
-  // This would validate account-specific fields
-  // Implementation depends on your account table structure
+  // Core required fields for debt accounts
+  const requiredFields = [
+    'original_account_number',  // Core debt identifier
+    'ssn',                     // Social Security Number
+    'current_balance',         // Current outstanding amount
+    'charge_off_date'          // When debt was charged off
+  ]
+  
+  requiredFields.forEach(field => {
+    const mappedField = columnMapping[field] || field
+    if (!row[mappedField] || row[mappedField].toString().trim() === '') {
+      errors.push({
+        row: rowNumber,
+        column: mappedField,
+        value: row[mappedField] || '',
+        message: `${field} is required`,
+        severity: 'error'
+      })
+    }
+  })
+  
+  // Validate numeric fields
+  const numericFields = [
+    'current_balance',
+    'original_balance',
+    'last_payment_amount',
+    'interest_rate',
+    'late_fees',
+    'collection_fees',
+    'debt_age',
+    'annual_income'
+  ]
+  
+  numericFields.forEach(field => {
+    const mappedField = columnMapping[field] || field
+    if (row[mappedField] && isNaN(parseFloat(row[mappedField]))) {
+      errors.push({
+        row: rowNumber,
+        column: mappedField,
+        value: row[mappedField],
+        message: `${field} must be a number`,
+        severity: 'error'
+      })
+    }
+  })
+  
+  // Validate date fields
+  const dateFields = [
+    'charge_off_date',
+    'original_loan_date',
+    'date_opened',
+    'last_payment_date',
+    'last_activity_date',
+    'dob'
+  ]
+  
+  dateFields.forEach(field => {
+    const mappedField = columnMapping[field] || field
+    if (row[mappedField] && row[mappedField].toString().trim() !== '') {
+      const dateValue = new Date(row[mappedField])
+      if (isNaN(dateValue.getTime())) {
+        errors.push({
+          row: rowNumber,
+          column: mappedField,
+          value: row[mappedField],
+          message: `${field} must be a valid date`,
+          severity: 'error'
+        })
+      }
+    }
+  })
+  
+  // Validate email format
+  const emailFields = ['email_primary', 'email_secondary']
+  emailFields.forEach(field => {
+    const mappedField = columnMapping[field] || field
+    if (row[mappedField] && !isValidEmail(row[mappedField])) {
+      errors.push({
+        row: rowNumber,
+        column: mappedField,
+        value: row[mappedField],
+        message: `Invalid email format for ${field}`,
+        severity: 'error'
+      })
+    }
+  })
+  
+  // Validate phone number format (basic validation)
+  const phoneFields = ['phone_primary', 'phone_secondary', 'phone_work']
+  phoneFields.forEach(field => {
+    const mappedField = columnMapping[field] || field
+    if (row[mappedField] && row[mappedField].toString().trim() !== '') {
+      const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/
+      const cleanPhone = row[mappedField].toString().replace(/[\s\-\(\)\.]/g, '')
+      if (!phoneRegex.test(cleanPhone)) {
+        errors.push({
+          row: rowNumber,
+          column: mappedField,
+          value: row[mappedField],
+          message: `Invalid phone number format for ${field}`,
+          severity: 'warning'
+        })
+      }
+    }
+  })
+  
+  // Validate SSN format (basic validation)
+  const ssnField = columnMapping['ssn'] || 'ssn'
+  if (row[ssnField] && row[ssnField].toString().trim() !== '') {
+    const ssnRegex = /^\d{3}-?\d{2}-?\d{4}$/
+    const cleanSSN = row[ssnField].toString().replace(/[\s\-]/g, '')
+    if (!ssnRegex.test(cleanSSN) && cleanSSN.length !== 9) {
+      errors.push({
+        row: rowNumber,
+        column: ssnField,
+        value: row[ssnField],
+        message: 'SSN must be in format XXX-XX-XXXX or 9 digits',
+        severity: 'error'
+      })
+    }
+  }
+  
+  // Validate ZIP code format
+  const zipField = columnMapping['zipcode'] || 'zipcode'
+  if (row[zipField] && row[zipField].toString().trim() !== '') {
+    const zipRegex = /^\d{5}(-\d{4})?$/
+    if (!zipRegex.test(row[zipField].toString().trim())) {
+      errors.push({
+        row: rowNumber,
+        column: zipField,
+        value: row[zipField],
+        message: 'ZIP code must be in format 12345 or 12345-6789',
+        severity: 'warning'
+      })
+    }
+  }
+  
+  // Validate boolean flags
+  const booleanFields = ['do_not_call', 'do_not_mail', 'do_not_email', 'do_not_text', 'bankruptcy_filed', 'active_military', 'hardship_declared']
+  booleanFields.forEach(field => {
+    const mappedField = columnMapping[field] || field
+    if (row[mappedField] && row[mappedField].toString().trim() !== '') {
+      const value = row[mappedField].toString().toLowerCase()
+      if (!['true', 'false', '1', '0', 'yes', 'no', 'y', 'n'].includes(value)) {
+        errors.push({
+          row: rowNumber,
+          column: mappedField,
+          value: row[mappedField],
+          message: `${field} must be a boolean value (true/false, 1/0, yes/no)`,
+          severity: 'warning'
+        })
+      }
+    }
+  })
+}
+
+function validateSkipTraceRow(row: any, rowNumber: number, columnMapping: Record<string, string>, errors: any[]) {
+  const requiredFields = ['skip_trace_reason']
+  const mappedField = columnMapping['skip_trace_reason'] || 'skip_trace_reason'
+
+  requiredFields.forEach(field => {
+    if (!row[mappedField] || row[mappedField].toString().trim() === '') {
+      errors.push({
+        row: rowNumber,
+        column: mappedField,
+        value: row[mappedField] || '',
+        message: `${field} is required`,
+        severity: 'error'
+      })
+    }
+  })
 }
 
 function isValidEmail(email: string): boolean {

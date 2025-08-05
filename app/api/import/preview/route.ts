@@ -47,11 +47,38 @@ export async function POST(request: NextRequest) {
     console.log('✅ Import preview: Permission check passed')
 
     const supabase = createAdminSupabaseClient()
-    const formData = await request.formData()
     
-    const file = formData.get('file') as File
-    const import_type = formData.get('import_type') as string
-    const template_id = formData.get('template_id') as string
+    // Add error handling around FormData processing
+    let formData: FormData
+    try {
+      formData = await request.formData()
+      console.log('✅ Import preview: FormData parsed successfully')
+    } catch (formDataError) {
+      console.error('❌ Import preview: FormData parsing failed:', formDataError)
+      return NextResponse.json(
+        { error: 'Failed to parse form data', details: formDataError instanceof Error ? formDataError.message : 'Unknown error' },
+        { status: 400 }
+      )
+    }
+    
+    // Add error handling around individual field extraction
+    let file: File
+    let import_type: string
+    let template_id: string
+    
+    try {
+      file = formData.get('file') as File
+      import_type = formData.get('import_type') as string
+      template_id = formData.get('template_id') as string
+      
+      console.log('✅ Import preview: Form fields extracted successfully')
+    } catch (fieldError) {
+      console.error('❌ Import preview: Field extraction failed:', fieldError)
+      return NextResponse.json(
+        { error: 'Failed to extract form fields', details: fieldError instanceof Error ? fieldError.message : 'Unknown error' },
+        { status: 400 }
+      )
+    }
     
     console.log('📁 Import preview: File info:', {
       fileName: file?.name,
@@ -90,57 +117,65 @@ export async function POST(request: NextRequest) {
     const isCSV = file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv')
     console.log(`📄 Import preview: Is CSV file: ${isCSV}`)
     
-    if (isCSV) {
-      const text = await file.text()
-      console.log(`📄 Import preview: CSV file content length: ${text.length}`)
-      console.log(`📄 Import preview: CSV file first 500 characters: ${text.substring(0, 500)}`)
-      console.log(`📄 Import preview: CSV file last 500 characters: ${text.substring(Math.max(0, text.length - 500))}`)
-      
-      // Count lines manually
-      const lines = text.split('\n')
-      console.log(`📄 Import preview: Total lines in file: ${lines.length}`)
-      console.log(`📄 Import preview: Non-empty lines: ${lines.filter(line => line.trim()).length}`)
-      
-      rows = parseCSV(text)
-      console.log(`📄 Import preview: Parsed ${rows.length} rows from CSV`)
-      if (rows.length > 0) {
-        console.log(`📄 Import preview: First row headers: ${Object.keys(rows[0]).join(', ')}`)
-        console.log(`📄 Import preview: First row sample: ${JSON.stringify(rows[0])}`)
-        if (rows.length > 1) {
-          console.log(`📄 Import preview: Second row sample: ${JSON.stringify(rows[1])}`)
-        }
-      }
-    } else {
-      // For Excel files, parse using xlsx library
-      console.log('📄 Import preview: Processing as Excel file')
-      const arrayBuffer = await file.arrayBuffer()
-      const workbook = XLSX.read(arrayBuffer, { type: 'array' })
-      
-      // Get the first sheet
-      const sheetName = workbook.SheetNames[0]
-      const worksheet = workbook.Sheets[sheetName]
-      
-      console.log(`📄 Import preview: Excel sheet name: ${sheetName}`)
-      console.log(`📄 Import preview: Excel sheet range: ${worksheet['!ref']}`)
-      
-      // Convert to JSON
-      rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
-      
-      // Convert array format to object format (first row as headers)
-      if (rows.length > 0) {
-        const headers = rows[0] as string[]
-        const dataRows = rows.slice(1) as any[][]
+    try {
+      if (isCSV) {
+        const text = await file.text()
+        console.log(`📄 Import preview: CSV file content length: ${text.length}`)
+        console.log(`📄 Import preview: CSV file first 500 characters: ${text.substring(0, 500)}`)
+        console.log(`📄 Import preview: CSV file last 500 characters: ${text.substring(Math.max(0, text.length - 500))}`)
         
-        rows = dataRows.map(row => {
-          const obj: any = {}
-          headers.forEach((header, index) => {
-            obj[header] = row[index] || ''
+        // Count lines manually
+        const lines = text.split('\n')
+        console.log(`📄 Import preview: Total lines in file: ${lines.length}`)
+        console.log(`📄 Import preview: Non-empty lines: ${lines.filter(line => line.trim()).length}`)
+        
+        rows = parseCSV(text)
+        console.log(`📄 Import preview: Parsed ${rows.length} rows from CSV`)
+        if (rows.length > 0) {
+          console.log(`📄 Import preview: First row headers: ${Object.keys(rows[0]).join(', ')}`)
+          console.log(`📄 Import preview: First row sample: ${JSON.stringify(rows[0])}`)
+          if (rows.length > 1) {
+            console.log(`📄 Import preview: Second row sample: ${JSON.stringify(rows[1])}`)
+          }
+        }
+      } else {
+        // For Excel files, parse using xlsx library
+        console.log('📄 Import preview: Processing as Excel file')
+        const arrayBuffer = await file.arrayBuffer()
+        const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+        
+        // Get the first sheet
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        
+        console.log(`📄 Import preview: Excel sheet name: ${sheetName}`)
+        console.log(`📄 Import preview: Excel sheet range: ${worksheet['!ref']}`)
+        
+        // Convert to JSON
+        rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+        
+        // Convert array format to object format (first row as headers)
+        if (rows.length > 0) {
+          const headers = rows[0] as string[]
+          const dataRows = rows.slice(1) as any[][]
+          
+          rows = dataRows.map(row => {
+            const obj: any = {}
+            headers.forEach((header, index) => {
+              obj[header] = row[index] || ''
+            })
+            return obj
           })
-          return obj
-        })
+        }
+        
+        console.log(`📄 Import preview: Excel parsed ${rows.length} data rows (excluding header)`)
       }
-      
-      console.log(`📄 Import preview: Excel parsed ${rows.length} data rows (excluding header)`)
+    } catch (fileParseError) {
+      console.error('❌ Import preview: File parsing failed:', fileParseError)
+      return NextResponse.json(
+        { error: 'Failed to parse file', details: fileParseError instanceof Error ? fileParseError.message : 'Unknown error' },
+        { status: 400 }
+      )
     }
     
     // Get template if provided

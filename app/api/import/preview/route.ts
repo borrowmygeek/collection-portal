@@ -47,8 +47,8 @@ export async function POST(request: NextRequest) {
 
     // Check if user has permission to preview imports
     const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user', 'buyer']
-    if (!allowedRoles.includes(user.activeRole.roleType)) {
-      console.error('❌ Import preview: Insufficient permissions for role:', user.activeRole.roleType)
+    if (!user?.activeRole?.roleType || !allowedRoles.includes(user.activeRole.roleType)) {
+      console.error('❌ Import preview: Insufficient permissions for role:', user?.activeRole?.roleType)
       return NextResponse.json(
         { error: 'Insufficient permissions to preview imports' },
         { status: 403 }

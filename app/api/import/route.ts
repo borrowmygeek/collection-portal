@@ -182,39 +182,57 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Import API: File validation passed')
 
-    // Test Supabase client creation
-    console.log('🔍 Import API: Testing Supabase client creation...')
+    // Test import job creation
+    console.log('🔍 Import API: Testing import job creation...')
     try {
-      const supabase = createAdminSupabaseClient()
-      console.log('✅ Import API: Supabase admin client created successfully')
+      // Create import job
+      console.log('🔍 Import API: Creating import job...')
+      console.log('🔍 Import API: Job data:', {
+        user_id: user.auth_user_id,
+        file_name: file.name,
+        file_size: file.size,
+        file_type: file.name.endsWith('.csv') ? 'csv' : 'xlsx',
+        import_type: importType,
+        template_id: templateId || null,
+        agency_id: user.activeRole.organizationId || null
+      })
       
-      // Test basic database connection
-      console.log('🔍 Import API: Testing database connection...')
-      const { data: testData, error: testError } = await supabase
+      const { data: job, error: jobError } = await supabase
         .from('import_jobs')
-        .select('id')
-        .limit(1)
-      
-      if (testError) {
-        console.error('❌ Import API: Database connection test failed:', testError)
+        .insert({
+          user_id: user.auth_user_id,
+          file_name: file.name,
+          file_size: file.size,
+          file_type: file.name.endsWith('.csv') ? 'csv' : 'xlsx',
+          import_type: importType,
+          template_id: templateId || null,
+          portfolio_id: null,
+          status: 'pending',
+          agency_id: user.activeRole.organizationId || null
+        })
+        .select()
+        .single()
+
+      if (jobError) {
+        console.error('❌ Import API: Error creating import job:', jobError)
         return NextResponse.json(
-          { error: `Database connection failed: ${testError.message}` },
+          { error: `Failed to create import job: ${jobError.message}` },
           { status: 500 }
         )
       }
       
-      console.log('✅ Import API: Database connection test successful')
+      console.log('✅ Import API: Import job created successfully:', job.id)
       
       return NextResponse.json({
         success: true,
-        job_id: 'test-job-id',
-        message: 'Import API test successful (database connection verified)'
+        job_id: job.id,
+        message: 'Import API test successful (import job created)'
       })
       
     } catch (error) {
-      console.error('❌ Import API: Error creating Supabase client:', error)
+      console.error('❌ Import API: Error in import job creation:', error)
       return NextResponse.json(
-        { error: `Supabase client creation failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
+        { error: `Import job creation failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
         { status: 500 }
       )
     }

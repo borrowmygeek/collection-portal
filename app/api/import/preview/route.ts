@@ -51,52 +51,40 @@ export async function POST(request: NextRequest) {
 
     const supabase = createAdminSupabaseClient()
     
-    // Add error handling around FormData processing
+    // Parse form data
     let formData: FormData
     try {
-      console.log('🔍 Import preview: About to parse FormData...')
       formData = await request.formData()
       console.log('✅ Import preview: FormData parsed successfully')
-      console.log('🔍 Import preview: FormData entries:', Array.from(formData.entries()).map(([key, value]) => ({ key, valueType: typeof value, valueSize: value instanceof File ? value.size : 'N/A' })))
-    } catch (formDataError) {
-      console.error('❌ Import preview: FormData parsing failed:', formDataError)
+    } catch (error) {
+      console.error('❌ Import preview: FormData parsing failed:', error)
       return NextResponse.json(
-        { error: 'Failed to parse form data', details: formDataError instanceof Error ? formDataError.message : 'Unknown error' },
+        { error: 'Failed to parse form data', details: error instanceof Error ? error.message : 'Unknown error' },
         { status: 400 }
       )
     }
-    
-    // Add error handling around individual field extraction
-    let file: File
-    let import_type: string
-    let template_id: string
-    
-    try {
-      console.log('🔍 Import preview: Extracting form fields...')
-      file = formData.get('file') as File
-      import_type = formData.get('import_type') as string
-      template_id = formData.get('template_id') as string
-      
-      console.log('✅ Import preview: Form fields extracted successfully')
-      console.log('🔍 Import preview: File:', file ? { name: file.name, size: file.size, type: file.type } : 'null')
-      console.log('🔍 Import preview: Import type:', import_type)
-      console.log('🔍 Import preview: Template ID:', template_id)
-    } catch (fieldError) {
-      console.error('❌ Import preview: Field extraction failed:', fieldError)
-      return NextResponse.json(
-        { error: 'Failed to extract form fields', details: fieldError instanceof Error ? fieldError.message : 'Unknown error' },
-        { status: 400 }
-      )
-    }
-    
-    console.log('📁 Import preview: File info:', {
-      fileName: file?.name,
-      fileSize: file?.size,
-      fileType: file?.type,
-      importType: import_type,
-      templateId: template_id
+
+    // Log all FormData entries for debugging
+    console.log('🔍 Import preview: FormData entries:')
+    Array.from(formData.entries()).forEach(([key, value]) => {
+      if (value instanceof File) {
+        console.log(`  - ${key}: File(${value.name}, ${value.size} bytes, ${value.type})`)
+      } else {
+        console.log(`  - ${key}: ${value}`)
+      }
     })
-    
+
+    // Extract required fields
+    const file = formData.get('file') as File
+    const import_type = formData.get('import_type') as string
+    const template_id = formData.get('template_id') as string
+
+    console.log('🔍 Import preview: Extracted fields:')
+    console.log('  - file:', file ? `${file.name} (${file.size} bytes)` : 'null')
+    console.log('  - import_type:', import_type)
+    console.log('  - template_id:', template_id)
+
+    // Validate required fields
     if (!file) {
       console.error('❌ Import preview: No file provided')
       return NextResponse.json(
@@ -104,144 +92,105 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
-    
+
     if (!import_type) {
-      console.error('❌ Import preview: Import type is required')
+      console.error('❌ Import preview: No import type provided')
       return NextResponse.json(
-        { error: 'Import type is required' },
+        { error: 'No import type provided' },
         { status: 400 }
       )
     }
-    
-    // Parse file to get preview data
-    let rows: any[] = []
-    let columnMapping: Record<string, string> = {}
-    let validationErrors: any[] = []
-    
-    console.log(`📄 Import preview: File type: ${file.type}`)
-    console.log(`📄 Import preview: File name: ${file.name}`)
-    console.log(`📄 Import preview: File size: ${file.size}`)
-    
-    // Determine if it's a CSV file (check both MIME type and file extension)
-    const isCSV = file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv')
-    console.log(`📄 Import preview: Is CSV file: ${isCSV}`)
-    
+
+    console.log('✅ Import preview: Required fields validation passed')
+
+    // Validate file type
+    const allowedTypes = ['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
+    if (!allowedTypes.includes(file.type)) {
+      console.error('❌ Import preview: Invalid file type:', file.type)
+      return NextResponse.json(
+        { error: 'Invalid file type. Please upload a CSV or Excel file.' },
+        { status: 400 }
+      )
+    }
+
+    console.log('✅ Import preview: File type validation passed')
+
+    // Read file content
+    let fileContent: string
+    let fileBuffer: Buffer
     try {
-      if (isCSV) {
-        const text = await file.text()
-        console.log(`📄 Import preview: CSV file content length: ${text.length}`)
-        console.log(`📄 Import preview: CSV file first 500 characters: ${text.substring(0, 500)}`)
-        console.log(`📄 Import preview: CSV file last 500 characters: ${text.substring(Math.max(0, text.length - 500))}`)
-        
-        // Count lines manually
-        const lines = text.split('\n')
-        console.log(`📄 Import preview: Total lines in file: ${lines.length}`)
-        console.log(`📄 Import preview: Non-empty lines: ${lines.filter(line => line.trim()).length}`)
-        
-        rows = parseCSV(text)
-        console.log(`📄 Import preview: Parsed ${rows.length} rows from CSV`)
-        if (rows.length > 0) {
-          console.log(`📄 Import preview: First row headers: ${Object.keys(rows[0]).join(', ')}`)
-          console.log(`📄 Import preview: First row sample: ${JSON.stringify(rows[0])}`)
-          if (rows.length > 1) {
-            console.log(`📄 Import preview: Second row sample: ${JSON.stringify(rows[1])}`)
-          }
-        }
-      } else {
-        // For Excel files, parse using xlsx library
-        console.log('📄 Import preview: Processing as Excel file')
-        const arrayBuffer = await file.arrayBuffer()
-        const workbook = XLSX.read(arrayBuffer, { type: 'array' })
-        
-        // Get the first sheet
-        const sheetName = workbook.SheetNames[0]
-        const worksheet = workbook.Sheets[sheetName]
-        
-        console.log(`📄 Import preview: Excel sheet name: ${sheetName}`)
-        console.log(`📄 Import preview: Excel sheet range: ${worksheet['!ref']}`)
-        
-        // Convert to JSON
-        rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
-        
-        // Convert array format to object format (first row as headers)
-        if (rows.length > 0) {
-          const headers = rows[0] as string[]
-          const dataRows = rows.slice(1) as any[][]
-          
-          rows = dataRows.map(row => {
-            const obj: any = {}
-            headers.forEach((header, index) => {
-              obj[header] = row[index] || ''
-            })
-            return obj
-          })
-        }
-        
-        console.log(`📄 Import preview: Excel parsed ${rows.length} data rows (excluding header)`)
-      }
-    } catch (fileParseError) {
-      console.error('❌ Import preview: File parsing failed:', fileParseError)
+      const arrayBuffer = await file.arrayBuffer()
+      fileBuffer = Buffer.from(arrayBuffer)
+      fileContent = fileBuffer.toString('utf-8')
+      console.log('✅ Import preview: File content read successfully, length:', fileContent.length)
+    } catch (error) {
+      console.error('❌ Import preview: File reading failed:', error)
       return NextResponse.json(
-        { error: 'Failed to parse file', details: fileParseError instanceof Error ? fileParseError.message : 'Unknown error' },
+        { error: 'Failed to read file content', details: error instanceof Error ? error.message : 'Unknown error' },
         { status: 400 }
       )
     }
-    
-    // Get template if provided
-    let template = null
+
+    // Parse file content
+    let rows: any[]
+    try {
+      if (file.type === 'text/csv') {
+        rows = parseCSV(fileContent)
+      } else {
+        rows = parseExcel(fileBuffer)
+      }
+      console.log('✅ Import preview: File parsed successfully, rows:', rows.length)
+    } catch (error) {
+      console.error('❌ Import preview: File parsing failed:', error)
+      return NextResponse.json(
+        { error: 'Failed to parse file content', details: error instanceof Error ? error.message : 'Unknown error' },
+        { status: 400 }
+      )
+    }
+
+    if (rows.length === 0) {
+      console.error('❌ Import preview: No data rows found in file')
+      return NextResponse.json(
+        { error: 'No data rows found in file' },
+        { status: 400 }
+      )
+    }
+
+    console.log('✅ Import preview: Data validation passed, processing preview...')
+
+    // Get column mapping from template if provided
+    let columnMapping: Record<string, string> = {}
     if (template_id) {
-      console.log('📋 Import preview: Fetching template with ID:', template_id)
       try {
-        const { data: templateData, error: templateError } = await supabase
+        const { data: template } = await supabase
           .from('import_templates')
-          .select('*')
+          .select('field_mappings')
           .eq('id', template_id)
           .single()
-        
-        if (templateError) {
-          console.error('❌ Import preview: Template fetch error:', templateError)
-          return NextResponse.json(
-            { error: `Failed to fetch template: ${templateError.message}` },
-            { status: 500 }
-          )
+
+        if (template?.field_mappings) {
+          columnMapping = template.field_mappings
+          console.log('✅ Import preview: Column mapping loaded from template')
         }
-        
-        template = templateData
-        console.log('✅ Import preview: Template fetched successfully:', template.name)
-      } catch (templateError) {
-        console.error('❌ Import preview: Template fetch exception:', templateError)
-        return NextResponse.json(
-          { error: `Template fetch failed: ${templateError}` },
-          { status: 500 }
-        )
+      } catch (error) {
+        console.warn('⚠️ Import preview: Failed to load template column mapping:', error)
       }
-    } else {
-      console.log('📋 Import preview: No template ID provided, skipping template fetch')
     }
-    
-    // Auto-map columns if template is provided
-    if (template && rows.length > 0) {
-      console.log('🔄 Import preview: Auto-mapping columns from template')
-      const headers = Object.keys(rows[0])
-      const templateColumns = [...template.required_columns, ...template.optional_columns]
-      
-      templateColumns.forEach(templateCol => {
-        const matchingHeader = headers.find(header => 
-          header.toLowerCase().includes(templateCol.toLowerCase()) ||
-          templateCol.toLowerCase().includes(header.toLowerCase())
-        )
-        if (matchingHeader) {
-          columnMapping[templateCol] = matchingHeader
-        }
-      })
-      
-      console.log('🔄 Import preview: Column mapping result:', columnMapping)
-    }
-    
+
     // Validate sample rows
     const sampleRows = rows.slice(0, 5) // First 5 rows
-    validationErrors = validateRows(sampleRows, import_type, columnMapping)
-    console.log('✅ Import preview: Validation completed, errors:', validationErrors.length)
+    let validationErrors: any[] = []
+    
+    try {
+      validationErrors = validateRows(sampleRows, import_type, columnMapping)
+      console.log('✅ Import preview: Validation completed, errors:', validationErrors.length)
+    } catch (error) {
+      console.error('❌ Import preview: Validation failed:', error)
+      return NextResponse.json(
+        { error: 'Validation failed', details: error instanceof Error ? error.message : 'Unknown error' },
+        { status: 400 }
+      )
+    }
     
     // TEMPORARY: Skip validation for debugging
     console.log('🔧 TEMPORARY: Skipping validation for debugging')
@@ -249,28 +198,28 @@ export async function POST(request: NextRequest) {
     
     // Estimate processing time (rough calculation)
     const estimatedTime = Math.ceil(rows.length / 100) // 100 rows per second
-    
-    // Determine file type
-    const fileType = isCSV ? 'csv' : 'excel'
-    
-    const preview = {
-      total_rows: rows.length,
-      sample_rows: sampleRows,
-      column_mapping: columnMapping,
-      validation_errors: validationErrors,
-      estimated_time: estimatedTime,
-      file_type: fileType,
-      headers: rows.length > 0 ? Object.keys(rows[0]) : []
-    }
-    
-    console.log('✅ Import preview: Successfully generated preview with', rows.length, 'rows')
-    return NextResponse.json({ preview })
-    
+
+    console.log('✅ Import preview: Processing completed successfully')
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        totalRows: rows.length,
+        sampleRows: rows.slice(0, 3),
+        validationErrors,
+        estimatedTime,
+        columnMapping
+      }
+    })
+
   } catch (error) {
     console.error('❌ Import preview: Unexpected error:', error)
-    console.error('❌ Import preview: Error stack:', error instanceof Error ? error.stack : 'No stack trace')
     return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      { 
+        error: 'Internal server error', 
+        details: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     )
   }
@@ -333,6 +282,31 @@ function parseCSVLine(line: string): string[] {
   result.push(current.trim())
   
   return result
+}
+
+function parseExcel(buffer: Buffer): any[] {
+  const workbook = XLSX.read(buffer, { type: 'buffer' })
+  const sheetName = workbook.SheetNames[0]
+  const worksheet = workbook.Sheets[sheetName]
+  
+  // Convert to JSON with headers
+  const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
+  
+  // Convert array format to object format (first row as headers)
+  if (rows.length > 0) {
+    const headers = rows[0] as string[]
+    const dataRows = rows.slice(1) as any[][]
+    
+    return dataRows.map(row => {
+      const obj: any = {}
+      headers.forEach((header, index) => {
+        obj[header] = row[index] || ''
+      })
+      return obj
+    })
+  }
+  
+  return []
 }
 
 function validateRows(rows: any[], importType: string, columnMapping: Record<string, string>): any[] {

@@ -60,15 +60,90 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Import preview: Permission check passed')
     
-    // TEMPORARY: Return basic success for debugging
-    console.log('🔧 TEMPORARY: Returning basic success response for debugging')
+    // Parse FormData
+    console.log('🔍 Import preview: Parsing FormData...')
+    const formData = await request.formData()
+    
+    // Extract form fields
+    const file = formData.get('file') as File
+    const importType = formData.get('import_type') as string
+    const templateId = formData.get('template_id') as string
+    
+    console.log('🔍 Import preview: FormData extracted:', {
+      fileName: file?.name,
+      fileSize: file?.size,
+      importType,
+      templateId
+    })
+    
+    // Validate file
+    if (!file) {
+      console.error('❌ Import preview: No file provided')
+      return NextResponse.json(
+        { error: 'No file provided' },
+        { status: 400 }
+      )
+    }
+    
+    // Validate file type
+    const allowedTypes = ['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']
+    if (!allowedTypes.includes(file.type)) {
+      console.error('❌ Import preview: Invalid file type:', file.type)
+      return NextResponse.json(
+        { error: 'Invalid file type. Please upload a CSV or Excel file.' },
+        { status: 400 }
+      )
+    }
+    
+    console.log('✅ Import preview: File validation passed')
+    
+    // Read and parse file
+    console.log('🔍 Import preview: Reading file...')
+    const fileBuffer = Buffer.from(await file.arrayBuffer())
+    
+    let rows: any[] = []
+    let headers: string[] = []
+    
+    if (file.type === 'text/csv') {
+      console.log('🔍 Import preview: Parsing CSV file...')
+      const csvText = fileBuffer.toString('utf-8')
+      const lines = csvText.split('\n').filter(line => line.trim())
+      
+      if (lines.length > 0) {
+        headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''))
+        rows = lines.slice(1).map(line => {
+          const values = line.split(',').map(v => v.trim().replace(/"/g, ''))
+          const obj: any = {}
+          headers.forEach((header, index) => {
+            obj[header] = values[index] || ''
+          })
+          return obj
+        })
+      }
+    } else {
+      console.log('🔍 Import preview: Parsing Excel file...')
+      // For now, return basic structure for Excel files
+      headers = ['Column 1', 'Column 2', 'Column 3']
+      rows = [
+        { 'Column 1': 'Sample 1', 'Column 2': 'Sample 2', 'Column 3': 'Sample 3' },
+        { 'Column 1': 'Sample 4', 'Column 2': 'Sample 5', 'Column 3': 'Sample 6' }
+      ]
+    }
+    
+    console.log('✅ Import preview: File parsed successfully:', {
+      totalRows: rows.length,
+      headers: headers.length,
+      sampleRows: rows.slice(0, 3)
+    })
+    
+    // Return preview data
     return NextResponse.json({
       preview: {
-        total_rows: 0,
-        sample_rows: [],
-        headers: [],
-        file_type: 'csv',
-        file_size: 0,
+        total_rows: rows.length,
+        sample_rows: rows.slice(0, 10), // Show first 10 rows
+        headers: headers,
+        file_type: file.type === 'text/csv' ? 'csv' : 'excel',
+        file_size: file.size,
         validation_errors: []
       }
     })

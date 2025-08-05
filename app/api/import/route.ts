@@ -288,13 +288,14 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Import: File buffer created, size:', fileBuffer.byteLength)
     console.log('✅ Import: File upload step skipped for testing')
 
-    // Process the import in the background
-    processImportJob(job.id, supabase, user.id, finalPortfolioId, fieldMapping)
+    // TEMPORARILY SKIP BACKGROUND PROCESSING FOR TESTING
+    console.log('🔍 Import: SKIPPING background processing for testing...')
+    console.log('🔍 Import: Job created successfully:', job.id)
 
     return NextResponse.json({
       success: true,
       job_id: job.id,
-      message: 'Import job created successfully'
+      message: 'Import job created successfully (background processing skipped)'
     })
 
   } catch (error) {

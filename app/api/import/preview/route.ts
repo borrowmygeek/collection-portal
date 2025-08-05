@@ -25,12 +25,48 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Import preview: Request URL:', request.url)
     console.log('🔍 Import preview: Request headers:', Object.fromEntries(request.headers.entries()))
     
+    // Authenticate the request
+    const { user, error: authError } = await authenticateApiRequest(request)
+    if (authError || !user) {
+      console.error('❌ Import preview: Authentication failed:', authError)
+      return NextResponse.json(
+        { error: authError || 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    console.log('✅ Import preview: Authentication successful for user:', user?.activeRole?.roleType)
+
+    // Check if user has permission to preview imports
+    const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user', 'buyer']
+    if (!user?.activeRole?.roleType) {
+      console.error('❌ Import preview: No user role found')
+      return NextResponse.json(
+        { error: 'No user role found' },
+        { status: 403 }
+      )
+    }
+    
+    // At this point, TypeScript knows user is not null
+    const userRole = user!.activeRole.roleType
+    
+    if (!allowedRoles.includes(userRole)) {
+      console.error('❌ Import preview: Insufficient permissions for role:', userRole)
+      return NextResponse.json(
+        { error: 'Insufficient permissions to preview imports' },
+        { status: 403 }
+      )
+    }
+
+    console.log('✅ Import preview: Permission check passed')
+    
     // TEMPORARY: Return basic success for debugging
     console.log('🔧 TEMPORARY: Returning basic success response for debugging')
     return NextResponse.json({
       success: true,
       message: 'Basic success response for debugging',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      userRole: userRole
     })
 
   } catch (error: unknown) {

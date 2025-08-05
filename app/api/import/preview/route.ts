@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     try {
       formData = await request.formData()
       console.log('✅ Import preview: FormData parsed successfully')
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('❌ Import preview: FormData parsing failed:', error)
       return NextResponse.json(
         { error: 'Failed to parse form data', details: error instanceof Error ? error.message : 'Unknown error' },
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
       fileBuffer = Buffer.from(arrayBuffer)
       fileContent = fileBuffer.toString('utf-8')
       console.log('✅ Import preview: File content read successfully, length:', fileContent.length)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('❌ Import preview: File reading failed:', error)
       return NextResponse.json(
         { error: 'Failed to read file content', details: error instanceof Error ? error.message : 'Unknown error' },
@@ -159,7 +159,7 @@ export async function POST(request: NextRequest) {
         rows = parseExcel(fileBuffer)
       }
       console.log('✅ Import preview: File parsed successfully, rows:', rows.length)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('❌ Import preview: File parsing failed:', error)
       return NextResponse.json(
         { error: 'Failed to parse file content', details: error instanceof Error ? error.message : 'Unknown error' },
@@ -191,7 +191,7 @@ export async function POST(request: NextRequest) {
           columnMapping = template.field_mappings
           console.log('✅ Import preview: Column mapping loaded from template')
         }
-      } catch (error) {
+      } catch (error: unknown) {
         console.warn('⚠️ Import preview: Failed to load template column mapping:', error)
       }
     }
@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
     try {
       validationErrors = validateRows(sampleRows, import_type, columnMapping)
       console.log('✅ Import preview: Validation completed, errors:', validationErrors.length)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('❌ Import preview: Validation failed:', error)
       return NextResponse.json(
         { error: 'Validation failed', details: error instanceof Error ? error.message : 'Unknown error' },
@@ -231,7 +231,7 @@ export async function POST(request: NextRequest) {
       }
     })
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('❌ Import preview: Unexpected error:', error)
     return NextResponse.json(
       { 

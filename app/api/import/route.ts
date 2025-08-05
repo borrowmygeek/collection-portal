@@ -273,8 +273,8 @@ export async function POST(request: NextRequest) {
       } catch {}
     }
 
-    // Upload file to storage
-    console.log('🔍 Import: Starting file upload to storage...')
+    // TEMPORARILY SKIP FILE UPLOAD FOR TESTING
+    console.log('🔍 Import: SKIPPING file upload for testing...')
     console.log('🔍 Import: File details:', {
       fileName: file.name,
       fileSize: file.size,
@@ -283,45 +283,10 @@ export async function POST(request: NextRequest) {
       jobId: job.id
     })
     
+    // Just create the file buffer for testing
     const fileBuffer = await file.arrayBuffer()
     console.log('🔍 Import: File buffer created, size:', fileBuffer.byteLength)
-    
-    try {
-      const { error: uploadError } = await supabase.storage
-        .from('import-files')
-        .upload(`${user.id}/${job.id}/${file.name}`, fileBuffer, {
-          contentType: file.type,
-          upsert: true
-        })
-
-      if (uploadError) {
-        console.error('❌ Import: Error uploading file to storage:', uploadError)
-        // Clean up the import job if file upload fails
-        await supabase
-          .from('import_jobs')
-          .delete()
-          .eq('id', job.id)
-        
-        return NextResponse.json(
-          { error: `Failed to upload file to storage: ${uploadError.message}` },
-          { status: 500 }
-        )
-      }
-      
-      console.log('✅ Import: File uploaded successfully to storage')
-    } catch (uploadException) {
-      console.error('❌ Import: Exception during file upload:', uploadException)
-      // Clean up the import job if file upload fails
-      await supabase
-        .from('import_jobs')
-        .delete()
-        .eq('id', job.id)
-      
-      return NextResponse.json(
-        { error: `File upload failed: ${uploadException instanceof Error ? uploadException.message : 'Unknown error'}` },
-        { status: 500 }
-      )
-    }
+    console.log('✅ Import: File upload step skipped for testing')
 
     // Process the import in the background
     processImportJob(job.id, supabase, user.id, finalPortfolioId, fieldMapping)

@@ -220,11 +220,30 @@ export async function POST(request: NextRequest) {
       }
       
       console.log('✅ Import API: Import job created successfully:', job.id)
-      
+
+      // Get field mapping if provided
+      const fieldMappingRaw = formData.get('field_mapping') as string
+      let fieldMapping: Record<string, string> = {}
+      if (fieldMappingRaw) {
+        try {
+          fieldMapping = JSON.parse(fieldMappingRaw)
+        } catch {}
+      }
+
+      // Start background processing
+      console.log('🔍 Import: Starting background processing...')
+      processImportJob(job.id, supabase, user.auth_user_id, undefined, fieldMapping)
+        .then(() => {
+          console.log('✅ Import: Background processing completed successfully')
+        })
+        .catch((error) => {
+          console.error('❌ Import: Background processing failed:', error)
+        })
+
       return NextResponse.json({
         success: true,
         job_id: job.id,
-        message: 'Import API test successful (import job created)'
+        message: 'Import job created and processing started'
       })
       
     } catch (error) {
@@ -504,9 +523,9 @@ async function processImportJob(jobId: string, supabase: any, userId: string, po
     const failedRowsData: any[] = [] // Store original row data for failed rows
 
     // Process each row
-    if (job.import_type === 'accounts' && portfolioId) {
+    if (job.import_type === 'accounts') {
       // Use bulk processing for accounts
-      const bulkResults = await bulkProcessAccounts(rows, supabase, userId, portfolioId, fieldMapping, jobId)
+              const bulkResults = await bulkProcessAccounts(rows, supabase, userId, portfolioId || '', fieldMapping, jobId)
       successfulRows = bulkResults.successful
       failedRows = bulkResults.failed
       errors = bulkResults.errors
@@ -622,7 +641,7 @@ async function processImportJob(jobId: string, supabase: any, userId: string, po
             }
           }
           
-          await processRow(mappedRow, job.import_type, supabase, userId, portfolioId, fieldMapping, jobId)
+                     await processRow(mappedRow, job.import_type, supabase, userId, portfolioId, fieldMapping, jobId)
           successfulRows++
         } catch (error: any) {
           failedRows++

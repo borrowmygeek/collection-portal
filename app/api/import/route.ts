@@ -177,6 +177,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Create import job
+    console.log('🔍 Import: Creating import job...')
+    console.log('🔍 Import: Job data:', {
+      user_id: user.auth_user_id,
+      file_name: file.name,
+      file_size: file.size,
+      file_type: file.name.endsWith('.csv') ? 'csv' : 'xlsx',
+      import_type: importType,
+      template_id: templateId || null,
+      agency_id: user.activeRole.organizationId || null
+    })
+    
     const { data: job, error: jobError } = await supabase
       .from('import_jobs')
       .insert({
@@ -194,12 +205,14 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (jobError) {
-      console.error('Error creating import job:', jobError)
+      console.error('❌ Import: Error creating import job:', jobError)
       return NextResponse.json(
-        { error: 'Failed to create import job' },
+        { error: `Failed to create import job: ${jobError.message}` },
         { status: 500 }
       )
     }
+    
+    console.log('✅ Import: Import job created successfully:', job.id)
 
     // Handle portfolio creation for account imports
     let finalPortfolioId = portfolioId
@@ -256,16 +269,43 @@ export async function POST(request: NextRequest) {
     }
 
     // Upload file to storage
+    console.log('🔍 Import: Starting file upload to storage...')
+    console.log('🔍 Import: File details:', {
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type,
+      userId: user.id,
+      jobId: job.id
+    })
+    
     const fileBuffer = await file.arrayBuffer()
-    const { error: uploadError } = await supabase.storage
-      .from('import-files')
-      .upload(`${user.id}/${job.file_name}`, fileBuffer, {
-        contentType: file.type,
-        upsert: true
-      })
+    console.log('🔍 Import: File buffer created, size:', fileBuffer.byteLength)
+    
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from('import-files')
+        .upload(`${user.id}/${job.id}/${file.name}`, fileBuffer, {
+          contentType: file.type,
+          upsert: true
+        })
 
-    if (uploadError) {
-      console.error('Error uploading file to storage:', uploadError)
+      if (uploadError) {
+        console.error('❌ Import: Error uploading file to storage:', uploadError)
+        // Clean up the import job if file upload fails
+        await supabase
+          .from('import_jobs')
+          .delete()
+          .eq('id', job.id)
+        
+        return NextResponse.json(
+          { error: `Failed to upload file to storage: ${uploadError.message}` },
+          { status: 500 }
+        )
+      }
+      
+      console.log('✅ Import: File uploaded successfully to storage')
+    } catch (uploadException) {
+      console.error('❌ Import: Exception during file upload:', uploadException)
       // Clean up the import job if file upload fails
       await supabase
         .from('import_jobs')
@@ -273,7 +313,7 @@ export async function POST(request: NextRequest) {
         .eq('id', job.id)
       
       return NextResponse.json(
-        { error: 'Failed to upload file to storage' },
+        { error: `File upload failed: ${uploadException instanceof Error ? uploadException.message : 'Unknown error'}` },
         { status: 500 }
       )
     }

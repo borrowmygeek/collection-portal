@@ -230,6 +230,46 @@ export async function POST(request: NextRequest) {
         } catch {}
       }
 
+      // Upload file to storage
+      console.log('🔍 Import: Starting file upload to storage...')
+      console.log('🔍 Import: File details:', {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        userId: user.auth_user_id,
+        jobId: job.id
+      })
+      
+      const fileBuffer = await file.arrayBuffer()
+      console.log('🔍 Import: File buffer created, size:', fileBuffer.byteLength)
+      
+      try {
+        const { error: uploadError } = await supabase.storage
+          .from('import-files')
+          .upload(`${user.auth_user_id}/${job.id}/${file.name}`, fileBuffer, {
+            contentType: file.type,
+            upsert: true
+          })
+        
+        if (uploadError) {
+          console.error('❌ Import: Error uploading file to storage:', uploadError)
+          await supabase.from('import_jobs').delete().eq('id', job.id)
+          return NextResponse.json(
+            { error: `Failed to upload file to storage: ${uploadError.message}` },
+            { status: 500 }
+          )
+        }
+        
+        console.log('✅ Import: File uploaded successfully to storage')
+      } catch (uploadException) {
+        console.error('❌ Import: Exception during file upload:', uploadException)
+        await supabase.from('import_jobs').delete().eq('id', job.id)
+        return NextResponse.json(
+          { error: `File upload failed: ${uploadException instanceof Error ? uploadException.message : 'Unknown error'}` },
+          { status: 500 }
+        )
+      }
+
       // Start background processing
       console.log('🔍 Import: Starting background processing...')
       processImportJob(job.id, supabase, user.auth_user_id, undefined, fieldMapping)
@@ -468,7 +508,7 @@ async function processImportJob(jobId: string, supabase: any, userId: string, po
     // Get file from storage
     const { data: fileData, error: fileError } = await supabase.storage
       .from('import-files')
-      .download(`${userId}/${job.file_name}`)
+      .download(`${userId}/${jobId}/${job.file_name}`)
 
     if (fileError || !fileData) {
       console.error(`[IMPORT] File not found in storage: ${fileError?.message}`)

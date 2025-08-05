@@ -486,13 +486,18 @@ export async function DELETE(request: NextRequest) {
 }
 
 async function processImportJob(jobId: string, supabase: any, userId: string, portfolioId?: string, fieldMapping?: Record<string, string>) {
+  console.log(`🔍 [IMPORT] Starting processImportJob for job ${jobId}`)
+  console.log(`🔍 [IMPORT] Parameters: userId=${userId}, portfolioId=${portfolioId}, fieldMapping=`, fieldMapping)
+  
   try {
+    console.log(`🔍 [IMPORT] Updating job status to processing...`)
     // Update job status to processing
     await supabase
       .from('import_jobs')
       .update({ status: 'processing', progress: 0 })
       .eq('id', jobId)
 
+    console.log(`🔍 [IMPORT] Getting job details...`)
     // Get job details
     const { data: job, error: jobError } = await supabase
       .from('import_jobs')
@@ -501,26 +506,41 @@ async function processImportJob(jobId: string, supabase: any, userId: string, po
       .single()
 
     if (jobError || !job) {
-      console.error(`[IMPORT] Job not found: ${jobError?.message}`)
+      console.error(`❌ [IMPORT] Job not found: ${jobError?.message}`)
       throw new Error('Job not found')
     }
+    
+    console.log(`✅ [IMPORT] Job found:`, {
+      id: job.id,
+      file_name: job.file_name,
+      file_type: job.file_type,
+      import_type: job.import_type,
+      status: job.status
+    })
 
+    console.log(`🔍 [IMPORT] Downloading file from storage: ${userId}/${jobId}/${job.file_name}`)
     // Get file from storage
     const { data: fileData, error: fileError } = await supabase.storage
       .from('import-files')
       .download(`${userId}/${jobId}/${job.file_name}`)
 
     if (fileError || !fileData) {
-      console.error(`[IMPORT] File not found in storage: ${fileError?.message}`)
+      console.error(`❌ [IMPORT] File not found in storage: ${fileError?.message}`)
       throw new Error('File not found in storage')
     }
+    
+    console.log(`✅ [IMPORT] File downloaded successfully, size: ${fileData.size} bytes`)
 
+    console.log(`🔍 [IMPORT] Parsing file content...`)
     // Parse file content
     let rows: any[] = []
     if (job.file_type === 'csv') {
+      console.log(`🔍 [IMPORT] Parsing CSV file...`)
       const text = await fileData.text()
       rows = parseCSV(text)
+      console.log(`✅ [IMPORT] CSV parsed, ${rows.length} rows found`)
     } else {
+      console.log(`🔍 [IMPORT] Parsing Excel file...`)
       // For Excel files, parse using xlsx library
       const arrayBuffer = await fileData.arrayBuffer()
       const workbook = XLSX.read(arrayBuffer, { type: 'array' })
@@ -544,6 +564,9 @@ async function processImportJob(jobId: string, supabase: any, userId: string, po
           })
           return obj
         })
+        console.log(`✅ [IMPORT] Excel parsed, ${rows.length} rows found, headers:`, headers)
+      } else {
+        console.log(`⚠️ [IMPORT] No data found in Excel file`)
       }
     }
 

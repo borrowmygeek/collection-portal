@@ -193,8 +193,7 @@ export async function POST(request: NextRequest) {
         file_size: file.size,
         file_type: file.name.endsWith('.csv') ? 'csv' : 'xlsx',
         import_type: importType,
-        template_id: templateId || null,
-        agency_id: user.activeRole.organizationId || null
+        template_id: templateId || null
       })
       
       const { data: job, error: jobError } = await supabase
@@ -207,8 +206,7 @@ export async function POST(request: NextRequest) {
           import_type: importType,
           template_id: templateId || null,
           portfolio_id: null,
-          status: 'pending',
-          agency_id: user.activeRole.organizationId || null
+          status: 'pending'
         })
         .select()
         .single()

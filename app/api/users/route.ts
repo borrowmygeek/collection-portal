@@ -220,6 +220,7 @@ export async function POST(request: NextRequest) {
     const validationResult = await validateInput(createUserSchema, body)
     if (!validationResult.success) {
       console.log('Validation failed:', validationResult.errors)
+      console.log('Request body:', JSON.stringify(body, null, 2))
       await logSecurityEvent(
         user.id,
         AUDIT_ACTIONS.SECURITY_VIOLATION,
@@ -239,7 +240,10 @@ export async function POST(request: NextRequest) {
       email: commonSanitizers.email,
       full_name: commonSanitizers.name,
       password: (pwd: string) => pwd, // Don't sanitize passwords
-      roles: (roles: any[]) => roles // Don't sanitize roles array
+      roles: (roles: any[]) => roles.map((role: any) => ({
+        ...role,
+        organization_id: role.organization_id === '' ? null : role.organization_id
+      })) // Convert empty strings to null for organization_id
     })
 
     // Additional security checks

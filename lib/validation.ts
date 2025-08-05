@@ -11,7 +11,7 @@ export const zipcodeSchema = z.string().regex(/^\d{5}(-\d{4})?$/, 'Invalid ZIP c
 export const userRoleSchema = z.object({
   role_type: z.enum(['platform_admin', 'platform_user', 'agency_admin', 'agency_user', 'client_admin', 'client_user', 'buyer']),
   organization_type: z.enum(['platform', 'agency', 'client', 'buyer']),
-  organization_id: z.string().uuid().nullable(),
+  organization_id: z.string().uuid().nullable().or(z.literal('')),
   is_primary: z.boolean(),
   permissions: z.record(z.any()).default({})
 })

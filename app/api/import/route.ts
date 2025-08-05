@@ -130,7 +130,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  console.log('🔍 Import API: Starting POST request')
   try {
+    console.log('🔍 Import API: Authenticating request...')
     // Authenticate the request
     const { user, error: authError } = await authenticateApiRequest(request)
     if (authError || !user) {
@@ -150,8 +152,11 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createAdminSupabaseClient()
+    console.log('✅ Import API: Supabase admin client created')
 
+    console.log('🔍 Import API: Parsing FormData...')
     const formData = await request.formData()
+    console.log('✅ Import API: FormData parsed successfully')
     const file = formData.get('file') as File
     const importType = formData.get('import_type') as string
     const templateId = formData.get('template_id') as string
@@ -328,9 +333,14 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Import error:', error)
+    console.error('❌ Import API: Unexpected error:', error)
+    console.error('❌ Import API: Error stack:', error instanceof Error ? error.stack : 'No stack trace')
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     )
   }

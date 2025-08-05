@@ -513,7 +513,7 @@ export async function POST(request: NextRequest) {
       await sendUserAccountCreatedEmail(
         completeUser.email,
         completeUser.full_name,
-        user.profile?.full_name || 'Platform Admin'
+        'Platform Admin'
       )
     } catch (emailError) {
       console.error('Error sending welcome email:', emailError)

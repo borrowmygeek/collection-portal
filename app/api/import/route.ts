@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user has permission to view import jobs
-    const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user']
+    const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user', 'buyer']
     if (!allowedRoles.includes(user.activeRole.roleType)) {
       return NextResponse.json(
         { error: 'Insufficient permissions' },
@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user has permission to create import jobs
-    const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user']
+    const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user', 'buyer']
     if (!allowedRoles.includes(user.activeRole.roleType)) {
       return NextResponse.json(
         { error: 'Insufficient permissions' },

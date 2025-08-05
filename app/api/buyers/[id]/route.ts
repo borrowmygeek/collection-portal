@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest } from '@/lib/auth-utils'
+import { sendAccountStatusUpdateEmail } from '@/lib/email'
 
 // Create admin client for data operations
 const createAdminSupabaseClient = () => {
@@ -91,6 +92,21 @@ export async function PUT(
         { error: 'Failed to update buyer' },
         { status: 500 }
       )
+    }
+
+    // Send status update email if status changed
+    if (body.status && buyer.status !== body.status) {
+      try {
+        await sendAccountStatusUpdateEmail(
+          buyer.contact_email,
+          buyer.company_name,
+          buyer.contact_name,
+          body.status
+        )
+      } catch (emailError) {
+        console.error('Error sending status update email:', emailError)
+        // Don't fail the request if email fails
+      }
     }
 
     return NextResponse.json(buyer)

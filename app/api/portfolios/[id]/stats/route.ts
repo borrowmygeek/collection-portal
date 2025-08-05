@@ -29,7 +29,7 @@ export async function GET(
     }
 
     // Check if user has permission to view portfolio statistics
-    const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user']
+    const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user', 'buyer']
     if (!allowedRoles.includes(user.activeRole.roleType)) {
       return NextResponse.json(
         { error: 'Insufficient permissions to view portfolio statistics' },

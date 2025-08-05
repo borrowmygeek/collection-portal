@@ -30,6 +30,7 @@ const navigationItems = [
   { name: 'Agencies', href: '/agencies', icon: BuildingOfficeIcon },
   { name: 'Clients', href: '/clients', icon: UsersIcon },
   { name: 'Buyers', href: '/buyers', icon: ShoppingCartIcon },
+  
   { name: 'Sales', href: '/sales', icon: CurrencyDollarIcon },
   { name: 'Portfolios', href: '/portfolios', icon: FolderIcon },
   { name: 'Users', href: '/users', icon: UsersIcon },
@@ -44,6 +45,7 @@ const navigationPermissions = {
   'Agencies': ['platform_admin'],
   'Clients': ['platform_admin', 'agency_admin'],
   'Buyers': ['platform_admin'],
+  
   'Sales': ['buyer'],
   'Portfolios': ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user'],
   'Users': ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user'],
@@ -143,10 +145,14 @@ export function Sidebar() {
     }
     
     // Filter navigation items based on user's role
-    return navigationItems.filter(item => {
+    let filteredItems = navigationItems.filter(item => {
       const allowedRoles = navigationPermissions[item.name as keyof typeof navigationPermissions]
       return allowedRoles && allowedRoles.includes(userRole)
     })
+    
+    
+    
+    return filteredItems
   }
 
   const currentNavigation = getNavigation()

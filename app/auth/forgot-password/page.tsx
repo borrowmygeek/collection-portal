@@ -17,13 +17,25 @@ export default function ForgotPasswordPage() {
     setError('')
     setSuccess(false)
 
-    const { error } = await resetPassword(email)
-    
-    if (error) {
-      setError(error.message)
-      setLoading(false)
-    } else {
+    try {
+      const response = await fetch('/api/auth/password-reset', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send reset email')
+      }
+
       setSuccess(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send reset email')
+    } finally {
       setLoading(false)
     }
   }

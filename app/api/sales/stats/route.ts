@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest } from '@/lib/auth-utils'
 
+// Force dynamic runtime for this API route
+export const dynamic = 'force-dynamic'
+
 // Create admin client for data operations
 const createAdminSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -26,7 +29,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user has permission to view sales stats
-    const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user']
+    const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user', 'buyer']
     if (!allowedRoles.includes(user.activeRole.roleType)) {
       return NextResponse.json(
         { error: 'Insufficient permissions to view sales statistics' },

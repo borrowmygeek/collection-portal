@@ -3,6 +3,9 @@ import { createClient } from '@supabase/supabase-js'
 import * as XLSX from 'xlsx'
 import { authenticateApiRequest } from '@/lib/auth-utils'
 
+// Force dynamic runtime for this API route
+export const dynamic = 'force-dynamic'
+
 // Create admin client for data operations
 const createAdminSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -32,7 +35,7 @@ export async function POST(request: NextRequest) {
     console.log('✅ Import preview: Authentication successful for user:', user.activeRole.roleType)
 
     // Check if user has permission to preview imports
-    const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user']
+    const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user', 'buyer']
     if (!allowedRoles.includes(user.activeRole.roleType)) {
       console.error('❌ Import preview: Insufficient permissions for role:', user.activeRole.roleType)
       return NextResponse.json(

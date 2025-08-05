@@ -41,6 +41,8 @@ export default function SalesPage() {
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
 
+
+
   useEffect(() => {
     fetchSales()
     fetchStats()
@@ -120,6 +122,8 @@ export default function SalesPage() {
                   Browse available debt portfolios for purchase
                 </p>
               </div>
+
+              
 
               {/* Stats Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

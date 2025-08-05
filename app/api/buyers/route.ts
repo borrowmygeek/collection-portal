@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
 import { logDataAccess, logDataModification } from '@/lib/audit-log'
+import { sendWelcomeEmail } from '@/lib/email'
 
 // Create admin client for data operations
 const createAdminSupabaseClient = () => {
@@ -121,10 +122,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if user has permission to create buyers
-    if (user.activeRole.roleType !== 'platform_admin') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
+    // Allow any authenticated user to register as a buyer (self-registration)
+    // Platform admins can also create buyers for others
 
     const supabase = createAdminSupabaseClient()
     const body = await request.json()
@@ -179,6 +178,37 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       )
     }
+
+    // Create a buyer role for the user
+    const { error: roleError } = await supabase
+      .from('user_roles')
+      .insert({
+        user_id: user.id,
+        role_type: 'buyer',
+        organization_type: 'buyer',
+        organization_id: buyer.id,
+        is_primary: false, // Keep existing primary role
+        is_active: true,
+        permissions: {}
+      })
+
+             if (roleError) {
+           console.error('Error creating buyer role:', roleError)
+           // Don't fail the entire request, but log the error
+           // The user can still access buyer features through the master_buyers table
+         }
+
+         // Send welcome email
+         try {
+           await sendWelcomeEmail(
+             body.contact_email,
+             body.company_name,
+             body.contact_name
+           )
+         } catch (emailError) {
+           console.error('Error sending welcome email:', emailError)
+           // Don't fail the request if email fails
+         }
 
     // Log the data modification
     await logDataModification(

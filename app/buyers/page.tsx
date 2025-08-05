@@ -15,7 +15,8 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   ClockIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  UserPlusIcon
 } from '@heroicons/react/24/outline'
 
 import { MasterBuyer } from '@/types/sales'
@@ -29,6 +30,23 @@ export default function BuyersPage() {
   const [ndaFilter, setNdaFilter] = useState('all')
   const [selectedBuyer, setSelectedBuyer] = useState<MasterBuyer | null>(null)
   const [showDetails, setShowDetails] = useState(false)
+  const [showRegistrationForm, setShowRegistrationForm] = useState(false)
+  const [registrationForm, setRegistrationForm] = useState({
+    company_name: '',
+    contact_name: '',
+    contact_email: '',
+    contact_phone: '',
+    website: '',
+    address_line1: '',
+    address_line2: '',
+    city: '',
+    state: '',
+    zip_code: '',
+    country: 'USA',
+    verification_notes: ''
+  })
+  const [registrationLoading, setRegistrationLoading] = useState(false)
+  const [registrationError, setRegistrationError] = useState('')
 
   useEffect(() => {
     fetchBuyers()
@@ -154,6 +172,56 @@ export default function BuyersPage() {
     })
   }
 
+  const handleRegistrationSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setRegistrationLoading(true)
+    setRegistrationError('')
+
+    try {
+      const response = await authenticatedFetch('/api/buyers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(registrationForm),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Registration failed')
+      }
+
+      // Reset form and close modal
+      setRegistrationForm({
+        company_name: '',
+        contact_name: '',
+        contact_email: '',
+        contact_phone: '',
+        website: '',
+        address_line1: '',
+        address_line2: '',
+        city: '',
+        state: '',
+        zip_code: '',
+        country: 'USA',
+        verification_notes: ''
+      })
+      setShowRegistrationForm(false)
+      
+      // Refresh the buyers list
+      await fetchBuyers()
+    } catch (err) {
+      setRegistrationError(err instanceof Error ? err.message : 'Registration failed')
+    } finally {
+      setRegistrationLoading(false)
+    }
+  }
+
+  const handleFormChange = (field: string, value: string) => {
+    setRegistrationForm(prev => ({ ...prev, [field]: value }))
+    setRegistrationError('')
+  }
+
   if (!isPlatformAdmin) {
     return (
       <ProtectedRoute>
@@ -193,6 +261,13 @@ export default function BuyersPage() {
                   <h1 className="text-2xl font-bold text-gray-900">Buyers</h1>
                   <p className="text-gray-600">Manage buyer registrations and NDA approvals</p>
                 </div>
+                <button
+                  onClick={() => setShowRegistrationForm(true)}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                >
+                  <UserPlusIcon className="h-4 w-4 mr-2" />
+                  Register New Buyer
+                </button>
               </div>
 
               {/* Stats */}
@@ -564,6 +639,227 @@ export default function BuyersPage() {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Buyer Registration Modal */}
+        {showRegistrationForm && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+            <div className="relative top-20 mx-auto p-5 border w-11/12 md:w-3/4 lg:w-1/2 shadow-lg rounded-md bg-white">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Register New Buyer</h3>
+                <button
+                  onClick={() => setShowRegistrationForm(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <XCircleIcon className="h-6 w-6" />
+                </button>
+              </div>
+
+              <form onSubmit={handleRegistrationSubmit} className="space-y-4">
+                {/* Company Information */}
+                <div>
+                  <h4 className="text-md font-medium text-gray-900 mb-3">Company Information</h4>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label htmlFor="company_name" className="block text-sm font-medium text-gray-700">
+                        Company Name *
+                      </label>
+                      <input
+                        type="text"
+                        id="company_name"
+                        required
+                        value={registrationForm.company_name}
+                        onChange={(e) => handleFormChange('company_name', e.target.value)}
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="website" className="block text-sm font-medium text-gray-700">
+                        Website
+                      </label>
+                      <input
+                        type="url"
+                        id="website"
+                        value={registrationForm.website}
+                        onChange={(e) => handleFormChange('website', e.target.value)}
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact Information */}
+                <div>
+                  <h4 className="text-md font-medium text-gray-900 mb-3">Contact Information</h4>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label htmlFor="contact_name" className="block text-sm font-medium text-gray-700">
+                        Contact Name *
+                      </label>
+                      <input
+                        type="text"
+                        id="contact_name"
+                        required
+                        value={registrationForm.contact_name}
+                        onChange={(e) => handleFormChange('contact_name', e.target.value)}
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="contact_email" className="block text-sm font-medium text-gray-700">
+                        Contact Email *
+                      </label>
+                      <input
+                        type="email"
+                        id="contact_email"
+                        required
+                        value={registrationForm.contact_email}
+                        onChange={(e) => handleFormChange('contact_email', e.target.value)}
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="contact_phone" className="block text-sm font-medium text-gray-700">
+                        Contact Phone *
+                      </label>
+                      <input
+                        type="tel"
+                        id="contact_phone"
+                        required
+                        value={registrationForm.contact_phone}
+                        onChange={(e) => handleFormChange('contact_phone', e.target.value)}
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Address Information */}
+                <div>
+                  <h4 className="text-md font-medium text-gray-900 mb-3">Address Information</h4>
+                  <div className="space-y-4">
+                    <div>
+                      <label htmlFor="address_line1" className="block text-sm font-medium text-gray-700">
+                        Address Line 1 *
+                      </label>
+                      <input
+                        type="text"
+                        id="address_line1"
+                        required
+                        value={registrationForm.address_line1}
+                        onChange={(e) => handleFormChange('address_line1', e.target.value)}
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="address_line2" className="block text-sm font-medium text-gray-700">
+                        Address Line 2
+                      </label>
+                      <input
+                        type="text"
+                        id="address_line2"
+                        value={registrationForm.address_line2}
+                        onChange={(e) => handleFormChange('address_line2', e.target.value)}
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                      <div>
+                        <label htmlFor="city" className="block text-sm font-medium text-gray-700">
+                          City *
+                        </label>
+                        <input
+                          type="text"
+                          id="city"
+                          required
+                          value={registrationForm.city}
+                          onChange={(e) => handleFormChange('city', e.target.value)}
+                          className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="state" className="block text-sm font-medium text-gray-700">
+                          State *
+                        </label>
+                        <input
+                          type="text"
+                          id="state"
+                          required
+                          value={registrationForm.state}
+                          onChange={(e) => handleFormChange('state', e.target.value)}
+                          className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label htmlFor="zip_code" className="block text-sm font-medium text-gray-700">
+                          ZIP Code *
+                        </label>
+                        <input
+                          type="text"
+                          id="zip_code"
+                          required
+                          value={registrationForm.zip_code}
+                          onChange={(e) => handleFormChange('zip_code', e.target.value)}
+                          className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Verification Notes */}
+                <div>
+                  <label htmlFor="verification_notes" className="block text-sm font-medium text-gray-700">
+                    Verification Notes
+                  </label>
+                  <textarea
+                    id="verification_notes"
+                    rows={3}
+                    value={registrationForm.verification_notes}
+                    onChange={(e) => handleFormChange('verification_notes', e.target.value)}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Any notes about the buyer verification process..."
+                  />
+                </div>
+
+                {registrationError && (
+                  <div className="rounded-md bg-red-50 p-4">
+                    <div className="flex">
+                      <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />
+                      <div className="ml-3">
+                        <h3 className="text-sm font-medium text-red-800">Error</h3>
+                        <div className="mt-2 text-sm text-red-700">{registrationError}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowRegistrationForm(false)}
+                    className="bg-gray-300 text-gray-700 px-4 py-2 rounded-md hover:bg-gray-400"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={registrationLoading}
+                    className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {registrationLoading ? 'Registering...' : 'Register Buyer'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

@@ -55,8 +55,11 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    if (!allowedRoles.includes(user.activeRole.roleType)) {
-      console.error('❌ Import preview: Insufficient permissions for role:', user.activeRole.roleType)
+    // At this point, TypeScript knows user is not null
+    const userRole = user!.activeRole.roleType
+    
+    if (!allowedRoles.includes(userRole)) {
+      console.error('❌ Import preview: Insufficient permissions for role:', userRole)
       return NextResponse.json(
         { error: 'Insufficient permissions to preview imports' },
         { status: 403 }

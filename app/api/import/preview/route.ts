@@ -25,6 +25,14 @@ export async function POST(request: NextRequest) {
     console.log('🔍 Import preview: Request URL:', request.url)
     console.log('🔍 Import preview: Request headers:', Object.fromEntries(request.headers.entries()))
     
+    // TEMPORARY: Return basic success for debugging
+    console.log('🔧 TEMPORARY: Returning basic success response for debugging')
+    return NextResponse.json({
+      success: true,
+      message: 'Basic success response for debugging',
+      timestamp: new Date().toISOString()
+    })
+    
     // Authenticate the request
     const { user, error: authError } = await authenticateApiRequest(request)
     if (authError || !user) {

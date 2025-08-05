@@ -63,8 +63,12 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
     })
     
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...(options.headers as Record<string, string> || {}),
+    }
+
+    // Only set Content-Type to application/json if not already set and not FormData
+    if (!headers['Content-Type'] && !(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json'
     }
 
     // Add authorization header if we have a session

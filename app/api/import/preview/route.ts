@@ -63,10 +63,14 @@ export async function POST(request: NextRequest) {
     // TEMPORARY: Return basic success for debugging
     console.log('🔧 TEMPORARY: Returning basic success response for debugging')
     return NextResponse.json({
-      success: true,
-      message: 'Basic success response for debugging',
-      timestamp: new Date().toISOString(),
-      userRole: userRole
+      preview: {
+        total_rows: 0,
+        sample_rows: [],
+        headers: [],
+        file_type: 'csv',
+        file_size: 0,
+        validation_errors: []
+      }
     })
 
   } catch (error: unknown) {

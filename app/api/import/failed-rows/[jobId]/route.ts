@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { authenticateApiRequest } from '@/lib/auth-utils'
 
-const createSupabaseClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+// Create admin client for data operations
+const createAdminSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Supabase admin environment variables not configured')
+  }
   
   return createClient(supabaseUrl, supabaseServiceKey)
 }
@@ -14,27 +20,18 @@ export async function GET(
 ) {
   try {
     const jobId = params.jobId
+    const supabase = createAdminSupabaseClient()
     
-    // Get authorization header
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // Authenticate the request using the new system
+    const authResult = await authenticateApiRequest(request)
+    if (!authResult.user) {
       return NextResponse.json(
-        { error: 'Missing or invalid authorization header' },
+        { error: authResult.error || 'Authentication failed' },
         { status: 401 }
       )
     }
     
-    const token = authHeader.substring(7)
-    const supabase = createSupabaseClient()
-    
-    // Verify user
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token)
-    if (userError || !user) {
-      return NextResponse.json(
-        { error: 'Invalid token' },
-        { status: 401 }
-      )
-    }
+    const { user } = authResult
     
     // Get import job details
     const { data: job, error: jobError } = await supabase
@@ -50,16 +47,8 @@ export async function GET(
       )
     }
     
-    // Check permissions - user can only download their own failed rows
-    const { data: userProfile } = await supabase
-      .from('platform_users')
-      .select('role')
-      .eq('auth_user_id', user.id)
-      .single()
-    
-    const isAdmin = userProfile?.role === 'platform_admin'
-    
-    if (!isAdmin && job.user_id !== user.id) {
+    // Check permissions - user can only download their own failed rows or platform admin
+    if (user.activeRole.roleType !== 'platform_admin' && job.user_id !== user.id) {
       return NextResponse.json(
         { error: 'Insufficient permissions' },
         { status: 403 }

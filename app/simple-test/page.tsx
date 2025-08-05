@@ -22,7 +22,7 @@ export default function SimpleTestPage() {
     
     // Test 3: Profile object
     if (profile) {
-      results.push(`3. Profile Found: ${profile.full_name} (${profile.role})`)
+      results.push(`3. Profile Found: ${profile.full_name} (${profile.activeRole.roleType})`)
     } else {
       results.push(`3. Profile: ${profile}`)
     }

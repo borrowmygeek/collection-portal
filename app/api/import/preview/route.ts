@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import * as XLSX from 'xlsx'
+import { authenticateApiRequest } from '@/lib/auth-utils'
 
-// Only create client if environment variables are available
-const createSupabaseClient = () => {
+// Create admin client for data operations
+const createAdminSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   
   if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase environment variables not configured')
+    throw new Error('Supabase admin environment variables not configured')
   }
   
   return createClient(supabaseUrl, supabaseServiceKey)
@@ -16,14 +17,49 @@ const createSupabaseClient = () => {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createSupabaseClient()
+    console.log('🔍 Import preview: Starting request processing')
+    
+    // Authenticate the request
+    const { user, error: authError } = await authenticateApiRequest(request)
+    if (authError || !user) {
+      console.error('❌ Import preview: Authentication failed:', authError)
+      return NextResponse.json(
+        { error: authError || 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    console.log('✅ Import preview: Authentication successful for user:', user.activeRole.roleType)
+
+    // Check if user has permission to preview imports
+    const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user']
+    if (!allowedRoles.includes(user.activeRole.roleType)) {
+      console.error('❌ Import preview: Insufficient permissions for role:', user.activeRole.roleType)
+      return NextResponse.json(
+        { error: 'Insufficient permissions to preview imports' },
+        { status: 403 }
+      )
+    }
+
+    console.log('✅ Import preview: Permission check passed')
+
+    const supabase = createAdminSupabaseClient()
     const formData = await request.formData()
     
     const file = formData.get('file') as File
     const import_type = formData.get('import_type') as string
     const template_id = formData.get('template_id') as string
     
+    console.log('📁 Import preview: File info:', {
+      fileName: file?.name,
+      fileSize: file?.size,
+      fileType: file?.type,
+      importType: import_type,
+      templateId: template_id
+    })
+    
     if (!file) {
+      console.error('❌ Import preview: No file provided')
       return NextResponse.json(
         { error: 'No file provided' },
         { status: 400 }
@@ -31,6 +67,7 @@ export async function POST(request: NextRequest) {
     }
     
     if (!import_type) {
+      console.error('❌ Import preview: Import type is required')
       return NextResponse.json(
         { error: 'Import type is required' },
         { status: 400 }
@@ -42,37 +79,37 @@ export async function POST(request: NextRequest) {
     let columnMapping: Record<string, string> = {}
     let validationErrors: any[] = []
     
-    console.log(`File type: ${file.type}`)
-    console.log(`File name: ${file.name}`)
-    console.log(`File size: ${file.size}`)
+    console.log(`📄 Import preview: File type: ${file.type}`)
+    console.log(`📄 Import preview: File name: ${file.name}`)
+    console.log(`📄 Import preview: File size: ${file.size}`)
     
     // Determine if it's a CSV file (check both MIME type and file extension)
     const isCSV = file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv')
-    console.log(`Is CSV file: ${isCSV}`)
+    console.log(`📄 Import preview: Is CSV file: ${isCSV}`)
     
     if (isCSV) {
       const text = await file.text()
-      console.log(`Preview CSV file content length: ${text.length}`)
-      console.log(`Preview CSV file first 500 characters: ${text.substring(0, 500)}`)
-      console.log(`Preview CSV file last 500 characters: ${text.substring(Math.max(0, text.length - 500))}`)
+      console.log(`📄 Import preview: CSV file content length: ${text.length}`)
+      console.log(`📄 Import preview: CSV file first 500 characters: ${text.substring(0, 500)}`)
+      console.log(`📄 Import preview: CSV file last 500 characters: ${text.substring(Math.max(0, text.length - 500))}`)
       
       // Count lines manually
       const lines = text.split('\n')
-      console.log(`Total lines in file: ${lines.length}`)
-      console.log(`Non-empty lines: ${lines.filter(line => line.trim()).length}`)
+      console.log(`📄 Import preview: Total lines in file: ${lines.length}`)
+      console.log(`📄 Import preview: Non-empty lines: ${lines.filter(line => line.trim()).length}`)
       
       rows = parseCSV(text)
-      console.log(`Preview parsed ${rows.length} rows from CSV`)
+      console.log(`📄 Import preview: Parsed ${rows.length} rows from CSV`)
       if (rows.length > 0) {
-        console.log(`Preview first row headers: ${Object.keys(rows[0]).join(', ')}`)
-        console.log(`Preview first row sample: ${JSON.stringify(rows[0])}`)
+        console.log(`📄 Import preview: First row headers: ${Object.keys(rows[0]).join(', ')}`)
+        console.log(`📄 Import preview: First row sample: ${JSON.stringify(rows[0])}`)
         if (rows.length > 1) {
-          console.log(`Preview second row sample: ${JSON.stringify(rows[1])}`)
+          console.log(`📄 Import preview: Second row sample: ${JSON.stringify(rows[1])}`)
         }
       }
     } else {
       // For Excel files, parse using xlsx library
-      console.log('Processing as Excel file')
+      console.log('📄 Import preview: Processing as Excel file')
       const arrayBuffer = await file.arrayBuffer()
       const workbook = XLSX.read(arrayBuffer, { type: 'array' })
       
@@ -80,8 +117,8 @@ export async function POST(request: NextRequest) {
       const sheetName = workbook.SheetNames[0]
       const worksheet = workbook.Sheets[sheetName]
       
-      console.log(`Excel sheet name: ${sheetName}`)
-      console.log(`Excel sheet range: ${worksheet['!ref']}`)
+      console.log(`📄 Import preview: Excel sheet name: ${sheetName}`)
+      console.log(`📄 Import preview: Excel sheet range: ${worksheet['!ref']}`)
       
       // Convert to JSON
       rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
@@ -100,22 +137,44 @@ export async function POST(request: NextRequest) {
         })
       }
       
-      console.log(`Excel parsed ${rows.length} data rows (excluding header)`)
+      console.log(`📄 Import preview: Excel parsed ${rows.length} data rows (excluding header)`)
     }
     
     // Get template if provided
     let template = null
     if (template_id) {
-      const { data: templateData } = await supabase
-        .from('import_templates')
-        .select('*')
-        .eq('id', template_id)
-        .single()
-      template = templateData
+      console.log('📋 Import preview: Fetching template with ID:', template_id)
+      try {
+        const { data: templateData, error: templateError } = await supabase
+          .from('import_templates')
+          .select('*')
+          .eq('id', template_id)
+          .single()
+        
+        if (templateError) {
+          console.error('❌ Import preview: Template fetch error:', templateError)
+          return NextResponse.json(
+            { error: `Failed to fetch template: ${templateError.message}` },
+            { status: 500 }
+          )
+        }
+        
+        template = templateData
+        console.log('✅ Import preview: Template fetched successfully:', template.name)
+      } catch (templateError) {
+        console.error('❌ Import preview: Template fetch exception:', templateError)
+        return NextResponse.json(
+          { error: `Template fetch failed: ${templateError}` },
+          { status: 500 }
+        )
+      }
+    } else {
+      console.log('📋 Import preview: No template ID provided, skipping template fetch')
     }
     
     // Auto-map columns if template is provided
     if (template && rows.length > 0) {
+      console.log('🔄 Import preview: Auto-mapping columns from template')
       const headers = Object.keys(rows[0])
       const templateColumns = [...template.required_columns, ...template.optional_columns]
       
@@ -128,11 +187,14 @@ export async function POST(request: NextRequest) {
           columnMapping[templateCol] = matchingHeader
         }
       })
+      
+      console.log('🔄 Import preview: Column mapping result:', columnMapping)
     }
     
     // Validate sample rows
     const sampleRows = rows.slice(0, 5) // First 5 rows
     validationErrors = validateRows(sampleRows, import_type, columnMapping)
+    console.log('✅ Import preview: Validation completed, errors:', validationErrors.length)
     
     // Estimate processing time (rough calculation)
     const estimatedTime = Math.ceil(rows.length / 100) // 100 rows per second
@@ -150,12 +212,14 @@ export async function POST(request: NextRequest) {
       headers: rows.length > 0 ? Object.keys(rows[0]) : []
     }
     
+    console.log('✅ Import preview: Successfully generated preview with', rows.length, 'rows')
     return NextResponse.json({ preview })
     
   } catch (error) {
-    console.error('Error:', error)
+    console.error('❌ Import preview: Unexpected error:', error)
+    console.error('❌ Import preview: Error stack:', error instanceof Error ? error.stack : 'No stack trace')
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

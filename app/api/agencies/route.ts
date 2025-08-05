@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { authenticateApiRequest, requireRole, requirePlatformAdmin } from '@/lib/auth-utils'
+import { authenticateApiRequest } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
 import { logDataAccess, logDataModification, AUDIT_ACTIONS } from '@/lib/audit-log'
 
-// Only create client if environment variables are available
-const createSupabaseClient = () => {
+// Create admin client for data operations
+const createAdminSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   
   if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase environment variables not configured')
+    throw new Error('Supabase admin environment variables not configured')
   }
   
   return createClient(supabaseUrl, supabaseServiceKey)
@@ -37,14 +37,15 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user has permission to view agencies
-    if (!requireRole(user, ['platform_admin', 'agency_admin', 'agency_user'])) {
+    const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user']
+    if (!allowedRoles.includes(user.activeRole.roleType)) {
       return NextResponse.json(
         { error: 'Insufficient permissions' },
         { status: 403 }
       )
     }
 
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     
     let query = supabase
       .from('master_agencies')
@@ -52,8 +53,8 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     // Filter by user's agency if not platform admin
-    if (user.role !== 'platform_admin' && user.agency_id) {
-      query = query.eq('id', user.agency_id)
+    if (user.activeRole.roleType !== 'platform_admin' && user.activeRole.organizationId) {
+      query = query.eq('id', user.activeRole.organizationId)
     }
 
     const { data: agencies, error } = await query

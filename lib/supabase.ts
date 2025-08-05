@@ -1,17 +1,55 @@
 import { createClient } from '@supabase/supabase-js'
 
+// Singleton pattern for Supabase client
+let supabaseInstance: ReturnType<typeof createClient> | null = null
+
+// Environment variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    storageKey: 'sb-nczrnzqbthaqnrcupneu-auth-token',
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-    flowType: 'pkce'
+// Create client with anon key for normal operations (respects RLS)
+export function createSupabaseClient() {
+  if (!supabaseInstance) {
+    console.log('🔧 Initializing Supabase client singleton...')
+    supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true
+      }
+    })
+    console.log('✅ Supabase client singleton created')
   }
-})
+  return supabaseInstance
+}
+
+// Create admin client with service role key (ONLY for admin operations)
+export function createAdminSupabaseClient() {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Supabase admin environment variables not configured')
+  }
+  
+  return createClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  })
+}
+
+// Get the singleton instance
+export function getSupabaseClient() {
+  return createSupabaseClient()
+}
+
+// Get admin client for privileged operations
+export function getAdminSupabaseClient() {
+  return createAdminSupabaseClient()
+}
+
+// Backward compatibility export
+export const supabase = createSupabaseClient()
 
 // Utility function for making authenticated API calls
 export async function authenticatedFetch(url: string, options: RequestInit = {}) {
@@ -35,6 +73,15 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
       console.log('✅ authenticatedFetch: Added Authorization header')
     } else {
       console.log('❌ authenticatedFetch: No access token available')
+    }
+
+    // Add role session token if available (for role switching)
+    if (typeof window !== 'undefined') {
+      const roleSessionToken = localStorage.getItem('roleSessionToken')
+      if (roleSessionToken) {
+        headers['x-role-session-token'] = roleSessionToken
+        console.log('✅ authenticatedFetch: Added role session token')
+      }
     }
 
     const response = await fetch(url, {

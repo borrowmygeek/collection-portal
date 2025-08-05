@@ -59,17 +59,32 @@ deploy-packages/vercel/
 
 ## 🎯 Features Working
 - ✅ **API Routes** - Full serverless support
-- ✅ **Authentication** - Supabase Auth
+- ✅ **Authentication** - Supabase Auth with multi-role support
 - ✅ **Database** - Real-time connections
 - ✅ **File Uploads** - If implemented
 - ✅ **Middleware** - Auth protection
 - ✅ **ISR/SSG** - Static generation
+- ✅ **Role Management** - Multi-role switching system
+- ✅ **Buyer Management** - Complete buyer registration and approval system
+- ✅ **Sales Portal** - Portfolio sales and management
+- ✅ **Toast Notifications** - User feedback system
+- ✅ **Advanced Filtering** - Search and filter capabilities
+- ✅ **Responsive Design** - Mobile and desktop optimized
 
 ## 🚀 Performance
 - **Edge Functions** - Global deployment
 - **Image Optimization** - Automatic
 - **Bundle Analysis** - Built-in
 - **Analytics** - Performance monitoring
+- **Function Optimization** - Specific timeouts for different API routes
+
+## 🆕 New Features (Latest Update)
+- **Role Switcher** - Users can switch between available roles from the sidebar
+- **Buyer Management Interface** - Professional table-based interface for managing buyers
+- **Sales Page Navigation** - Properly integrated sales page in sidebar navigation
+- **Advanced Search & Filtering** - Enhanced buyer management with search and filters
+- **Toast Notifications** - User feedback for role switches and other actions
+- **Improved UX** - Better loading states, error handling, and responsive design
 
 ## 🐛 Troubleshooting
 
@@ -79,7 +94,7 @@ deploy-packages/vercel/
 - Check for TypeScript errors
 
 ### API Routes Not Working
-- Verify function timeout (30s max)
+- Verify function timeout (60s max for general, 30s for specific routes)
 - Check environment variables
 - Test locally first
 
@@ -88,10 +103,26 @@ deploy-packages/vercel/
 - Check RLS policies
 - Test with service role key
 
+### Role Switching Issues
+- Verify user has multiple roles assigned
+- Check role permissions in database
+- Ensure role session tokens are properly configured
+
 ## 📞 Support
 - **Vercel Docs**: [vercel.com/docs](https://vercel.com/docs)
 - **Next.js**: [nextjs.org/docs](https://nextjs.org/docs)
 - **Community**: [github.com/vercel/vercel/discussions](https://github.com/vercel/vercel/discussions)
 
 ## 🎉 Success!
-Your Collection Portal will be live at: `https://your-project.vercel.app` 
+Your Collection Portal will be live at: `https://your-project.vercel.app`
+
+## 🔄 Updating Deployment
+To update your existing deployment with the latest changes:
+
+```bash
+# Deploy latest changes
+vercel --prod
+
+# Or for preview deployment
+vercel
+``` 

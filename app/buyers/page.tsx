@@ -2,24 +2,31 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/lib/auth-context'
+import { authenticatedFetch } from '@/lib/supabase'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import DashboardHeader from '@/components/DashboardHeader'
 import Sidebar from '@/components/Sidebar'
 import { 
-  BuildingOfficeIcon,
+  PlusIcon, 
+  MagnifyingGlassIcon,
+  FunnelIcon,
+  PencilIcon,
+  EyeIcon,
   CheckCircleIcon,
   XCircleIcon,
   ClockIcon,
-  EyeIcon,
-  DocumentTextIcon
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline'
+
 import { MasterBuyer } from '@/types/sales'
 
 export default function BuyersPage() {
   const { profile, isPlatformAdmin } = useAuth()
   const [buyers, setBuyers] = useState<MasterBuyer[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [ndaFilter, setNdaFilter] = useState('all')
   const [selectedBuyer, setSelectedBuyer] = useState<MasterBuyer | null>(null)
   const [showDetails, setShowDetails] = useState(false)
 
@@ -29,24 +36,35 @@ export default function BuyersPage() {
 
   const fetchBuyers = async () => {
     try {
-      const response = await fetch('/api/buyers')
+      setLoading(true)
+      const response = await authenticatedFetch('/api/buyers')
       if (response.ok) {
         const data = await response.json()
         setBuyers(data.buyers || [])
       } else {
-        throw new Error('Failed to fetch buyers')
+        console.error('Error fetching buyers:', response.status)
       }
     } catch (error) {
-      setError('Failed to load buyers')
       console.error('Error fetching buyers:', error)
     } finally {
       setLoading(false)
     }
   }
 
+  const filteredBuyers = buyers.filter(buyer => {
+    const matchesSearch = buyer.company_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         buyer.contact_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         buyer.contact_email.toLowerCase().includes(searchQuery.toLowerCase())
+    const matchesStatus = statusFilter === 'all' || buyer.status === statusFilter
+    const matchesNda = ndaFilter === 'all' || 
+                      (ndaFilter === 'signed' && buyer.nda_signed) ||
+                      (ndaFilter === 'pending' && !buyer.nda_signed)
+    return matchesSearch && matchesStatus && matchesNda
+  })
+
   const handleStatusUpdate = async (buyerId: string, newStatus: string) => {
     try {
-      const response = await fetch(`/api/buyers/${buyerId}`, {
+      const response = await authenticatedFetch(`/api/buyers/${buyerId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -65,15 +83,33 @@ export default function BuyersPage() {
         throw new Error('Failed to update buyer status')
       }
     } catch (error) {
-      setError('Failed to update buyer status')
       console.error('Error updating buyer status:', error)
     }
   }
 
-  const getStatusBadge = (status: string, ndaSigned: boolean) => {
+  const getStatusBadge = (status: string, ndaSigned: boolean, complianceStatus?: string, currentVersion?: string, signedVersion?: string) => {
+    // Check NDA compliance first
+    if (complianceStatus === 'non_compliant') {
+      return (
+        <span className="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
+          <ExclamationTriangleIcon className="h-3 w-3 mr-1" />
+          NDA Non-Compliant
+        </span>
+      )
+    }
+
+    if (complianceStatus === 'compliant') {
+      return (
+        <span className="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
+          <CheckCircleIcon className="h-3 w-3 mr-1" />
+          NDA Compliant
+        </span>
+      )
+    }
+
     if (!ndaSigned) {
       return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+        <span className="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
           <ClockIcon className="h-3 w-3 mr-1" />
           Pending NDA
         </span>
@@ -83,27 +119,27 @@ export default function BuyersPage() {
     switch (status) {
       case 'approved':
         return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+          <span className="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">
             <CheckCircleIcon className="h-3 w-3 mr-1" />
             Approved
           </span>
         )
       case 'suspended':
         return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+          <span className="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">
             <XCircleIcon className="h-3 w-3 mr-1" />
             Suspended
           </span>
         )
       case 'inactive':
         return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+          <span className="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">
             Inactive
           </span>
         )
       default:
         return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+          <span className="inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
             Pending
           </span>
         )
@@ -114,9 +150,7 @@ export default function BuyersPage() {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      day: 'numeric'
     })
   }
 
@@ -145,26 +179,34 @@ export default function BuyersPage() {
 
   return (
     <ProtectedRoute>
-      <div className="flex h-screen bg-gray-100">
+      <div className="flex h-screen bg-gray-50">
         <Sidebar />
+        
         <div className="flex-1 flex flex-col overflow-hidden">
           <DashboardHeader />
           
-          <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100">
-            <div className="container mx-auto px-6 py-8">
-              <div className="mb-8">
-                <h1 className="text-3xl font-bold text-gray-900">Buyer Management</h1>
-                <p className="mt-2 text-gray-600">
-                  Manage buyer registrations and NDA approvals
-                </p>
+          <main className="flex-1 overflow-y-auto p-6">
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">Buyers</h1>
+                  <p className="text-gray-600">Manage buyer registrations and NDA approvals</p>
+                </div>
               </div>
 
               {/* Stats */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="bg-white overflow-hidden shadow rounded-lg">
                   <div className="p-5">
                     <div className="flex items-center">
-                      <BuildingOfficeIcon className="h-6 w-6 text-gray-400" />
+                      <div className="flex-shrink-0">
+                        <div className="h-6 w-6 text-gray-400">
+                          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                          </svg>
+                        </div>
+                      </div>
                       <div className="ml-5 w-0 flex-1">
                         <dl>
                           <dt className="text-sm font-medium text-gray-500 truncate">
@@ -182,7 +224,9 @@ export default function BuyersPage() {
                 <div className="bg-white overflow-hidden shadow rounded-lg">
                   <div className="p-5">
                     <div className="flex items-center">
-                      <CheckCircleIcon className="h-6 w-6 text-green-400" />
+                      <div className="flex-shrink-0">
+                        <CheckCircleIcon className="h-6 w-6 text-green-400" />
+                      </div>
                       <div className="ml-5 w-0 flex-1">
                         <dl>
                           <dt className="text-sm font-medium text-gray-500 truncate">
@@ -200,7 +244,9 @@ export default function BuyersPage() {
                 <div className="bg-white overflow-hidden shadow rounded-lg">
                   <div className="p-5">
                     <div className="flex items-center">
-                      <ClockIcon className="h-6 w-6 text-yellow-400" />
+                      <div className="flex-shrink-0">
+                        <ClockIcon className="h-6 w-6 text-yellow-400" />
+                      </div>
                       <div className="ml-5 w-0 flex-1">
                         <dl>
                           <dt className="text-sm font-medium text-gray-500 truncate">
@@ -218,7 +264,9 @@ export default function BuyersPage() {
                 <div className="bg-white overflow-hidden shadow rounded-lg">
                   <div className="p-5">
                     <div className="flex items-center">
-                      <XCircleIcon className="h-6 w-6 text-red-400" />
+                      <div className="flex-shrink-0">
+                        <XCircleIcon className="h-6 w-6 text-red-400" />
+                      </div>
                       <div className="ml-5 w-0 flex-1">
                         <dl>
                           <dt className="text-sm font-medium text-gray-500 truncate">
@@ -234,121 +282,186 @@ export default function BuyersPage() {
                 </div>
               </div>
 
-              {/* Buyers List */}
-              <div className="bg-white shadow overflow-hidden sm:rounded-md">
-                <div className="px-4 py-5 sm:px-6">
-                  <h3 className="text-lg leading-6 font-medium text-gray-900">
-                    Buyer Registrations
-                  </h3>
-                  <p className="mt-1 max-w-2xl text-sm text-gray-500">
-                    Review and manage buyer accounts
-                  </p>
+              {/* Filters */}
+              <div className="flex items-center space-x-4">
+                <div className="flex-1 max-w-md">
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
+                    </div>
+                    <input
+                      type="text"
+                      className="input-field pl-10"
+                      placeholder="Search buyers..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  <FunnelIcon className="h-5 w-5 text-gray-400" />
+                  <select
+                    className="input-field"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                  >
+                    <option value="all">All Status</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="suspended">Suspended</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
                 </div>
 
-                {loading ? (
-                  <div className="px-4 py-8 text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-                    <p className="mt-2 text-gray-500">Loading buyers...</p>
-                  </div>
-                ) : buyers.length === 0 ? (
-                  <div className="px-4 py-8 text-center">
-                    <BuildingOfficeIcon className="mx-auto h-12 w-12 text-gray-400" />
-                    <h3 className="mt-2 text-sm font-medium text-gray-900">No buyers found</h3>
-                    <p className="mt-1 text-sm text-gray-500">
-                      No buyer registrations have been submitted yet.
-                    </p>
-                  </div>
-                ) : (
-                  <ul className="divide-y divide-gray-200">
-                    {buyers.map((buyer) => (
-                      <li key={buyer.id} className="px-4 py-4">
-                        <div className="flex items-center justify-between">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <h4 className="text-lg font-medium text-gray-900 truncate">
-                                  {buyer.company_name}
-                                </h4>
-                                <p className="text-sm text-gray-500">
-                                  {buyer.contact_name} • {buyer.contact_email}
-                                </p>
-                                <p className="text-sm text-gray-500">
-                                  {buyer.city}, {buyer.state} {buyer.zip_code}
-                                </p>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                {getStatusBadge(buyer.status, buyer.nda_signed)}
-                              </div>
-                            </div>
-                            
-                            <div className="mt-2 text-sm text-gray-500">
-                              <p>Registered: {formatDate(buyer.created_at)}</p>
-                              {buyer.nda_signed_date && (
-                                <p>NDA Signed: {formatDate(buyer.nda_signed_date)}</p>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div className="ml-4 flex-shrink-0 flex space-x-2">
-                            <button
-                              onClick={() => {
-                                setSelectedBuyer(buyer)
-                                setShowDetails(true)
-                              }}
-                              className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                            >
-                              <EyeIcon className="h-4 w-4 mr-1" />
-                              Details
-                            </button>
-                            
-                            {buyer.status === 'pending' && buyer.nda_signed && (
-                              <button
-                                onClick={() => handleStatusUpdate(buyer.id, 'approved')}
-                                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                              >
-                                <CheckCircleIcon className="h-4 w-4 mr-1" />
-                                Approve
-                              </button>
-                            )}
-                            
-                            {buyer.status === 'approved' && (
-                              <button
-                                onClick={() => handleStatusUpdate(buyer.id, 'suspended')}
-                                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                              >
-                                <XCircleIcon className="h-4 w-4 mr-1" />
-                                Suspend
-                              </button>
-                            )}
-                            
-                            {buyer.status === 'suspended' && (
-                              <button
-                                onClick={() => handleStatusUpdate(buyer.id, 'approved')}
-                                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-                              >
-                                <CheckCircleIcon className="h-4 w-4 mr-1" />
-                                Reactivate
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <div className="flex items-center space-x-2">
+                  <FunnelIcon className="h-5 w-5 text-gray-400" />
+                  <select
+                    className="input-field"
+                    value={ndaFilter}
+                    onChange={(e) => setNdaFilter(e.target.value)}
+                  >
+                    <option value="all">All NDA Status</option>
+                    <option value="signed">NDA Signed</option>
+                    <option value="pending">NDA Pending</option>
+                  </select>
+                </div>
               </div>
 
-              {error && (
-                <div className="mt-4 rounded-md bg-red-50 p-4">
-                  <div className="flex">
-                    <XCircleIcon className="h-5 w-5 text-red-400" />
-                    <div className="ml-3">
-                      <h3 className="text-sm font-medium text-red-800">Error</h3>
-                      <div className="mt-2 text-sm text-red-700">{error}</div>
-                    </div>
+              {/* Buyers Table */}
+              <div className="card">
+                {loading ? (
+                  <div className="flex items-center justify-center h-64">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
                   </div>
-                </div>
-              )}
+                ) : filteredBuyers.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Company
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Contact
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Location
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Status
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Registered
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {filteredBuyers.map((buyer) => (
+                          <tr key={buyer.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">{buyer.company_name}</div>
+                                {buyer.website && (
+                                  <div className="text-sm text-gray-500">{buyer.website}</div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div>
+                                <div className="text-sm text-gray-900">{buyer.contact_name}</div>
+                                <div className="text-sm text-gray-500">{buyer.contact_email}</div>
+                                {buyer.contact_phone && (
+                                  <div className="text-sm text-gray-500">{buyer.contact_phone}</div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">
+                                {buyer.city && buyer.state ? `${buyer.city}, ${buyer.state}` : 'N/A'}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {getStatusBadge(
+                                buyer.status, 
+                                buyer.nda_signed, 
+                                buyer.nda_compliance_status,
+                                buyer.current_nda_version,
+                                buyer.nda_version_signed
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {formatDate(buyer.created_at)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => {
+                                    setSelectedBuyer(buyer)
+                                    setShowDetails(true)
+                                  }}
+                                  className="text-indigo-600 hover:text-indigo-900 flex items-center space-x-1"
+                                >
+                                  <EyeIcon className="h-4 w-4" />
+                                  <span>Details</span>
+                                </button>
+                                
+                                {buyer.status === 'pending' && buyer.nda_signed && (
+                                  <button
+                                    onClick={() => handleStatusUpdate(buyer.id, 'approved')}
+                                    className="text-green-600 hover:text-green-900 flex items-center space-x-1"
+                                  >
+                                    <CheckCircleIcon className="h-4 w-4" />
+                                    <span>Approve</span>
+                                  </button>
+                                )}
+                                
+                                {buyer.status === 'approved' && (
+                                  <button
+                                    onClick={() => handleStatusUpdate(buyer.id, 'suspended')}
+                                    className="text-red-600 hover:text-red-900 flex items-center space-x-1"
+                                  >
+                                    <XCircleIcon className="h-4 w-4" />
+                                    <span>Suspend</span>
+                                  </button>
+                                )}
+                                
+                                {buyer.status === 'suspended' && (
+                                  <button
+                                    onClick={() => handleStatusUpdate(buyer.id, 'approved')}
+                                    className="text-green-600 hover:text-green-900 flex items-center space-x-1"
+                                  >
+                                    <CheckCircleIcon className="h-4 w-4" />
+                                    <span>Reactivate</span>
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <div className="text-gray-400 mb-4">
+                      <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                      </svg>
+                    </div>
+                    <h3 className="text-sm font-medium text-gray-900 mb-2">No buyers found</h3>
+                    <p className="text-sm text-gray-500">
+                      {searchQuery || statusFilter !== 'all' || ndaFilter !== 'all'
+                        ? 'Try adjusting your search or filter criteria.'
+                        : 'No buyer registrations have been submitted yet.'
+                      }
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </main>
         </div>
@@ -378,17 +491,21 @@ export default function BuyersPage() {
                     <label className="block text-sm font-medium text-gray-700">Contact</label>
                     <p className="mt-1 text-sm text-gray-900">{selectedBuyer.contact_name}</p>
                     <p className="mt-1 text-sm text-gray-900">{selectedBuyer.contact_email}</p>
-                    <p className="mt-1 text-sm text-gray-900">{selectedBuyer.contact_phone}</p>
+                    {selectedBuyer.contact_phone && (
+                      <p className="mt-1 text-sm text-gray-900">{selectedBuyer.contact_phone}</p>
+                    )}
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Address</label>
-                    <p className="mt-1 text-sm text-gray-900">{selectedBuyer.address_line1}</p>
+                    {selectedBuyer.address_line1 && (
+                      <p className="mt-1 text-sm text-gray-900">{selectedBuyer.address_line1}</p>
+                    )}
                     {selectedBuyer.address_line2 && (
                       <p className="mt-1 text-sm text-gray-900">{selectedBuyer.address_line2}</p>
                     )}
                     <p className="mt-1 text-sm text-gray-900">
-                      {selectedBuyer.city}, {selectedBuyer.state} {selectedBuyer.zip_code}
+                      {selectedBuyer.city && selectedBuyer.state ? `${selectedBuyer.city}, ${selectedBuyer.state} ${selectedBuyer.zip_code || ''}` : 'N/A'}
                     </p>
                   </div>
                   
@@ -402,19 +519,40 @@ export default function BuyersPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Status</label>
                     <div className="mt-1">
-                      {getStatusBadge(selectedBuyer.status, selectedBuyer.nda_signed)}
+                      {getStatusBadge(
+                        selectedBuyer.status, 
+                        selectedBuyer.nda_signed, 
+                        selectedBuyer.nda_compliance_status,
+                        selectedBuyer.current_nda_version,
+                        selectedBuyer.nda_version_signed
+                      )}
                     </div>
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Registration Date</label>
-                    <p className="mt-1 text-sm text-gray-900">{formatDate(selectedBuyer.created_at)}</p>
+                    <label className="block text-sm font-medium text-gray-700">NDA Status</label>
+                    <div className="mt-1">
+                      {getStatusBadge(
+                        selectedBuyer.status, 
+                        selectedBuyer.nda_signed, 
+                        selectedBuyer.nda_compliance_status,
+                        selectedBuyer.current_nda_version,
+                        selectedBuyer.nda_version_signed
+                      )}
+                    </div>
                   </div>
                   
-                  {selectedBuyer.nda_signed_date && (
+                  {selectedBuyer.current_nda_version && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700">NDA Signed</label>
-                      <p className="mt-1 text-sm text-gray-900">{formatDate(selectedBuyer.nda_signed_date)}</p>
+                      <label className="block text-sm font-medium text-gray-700">Current NDA Version</label>
+                      <p className="mt-1 text-sm text-gray-900">{selectedBuyer.current_nda_version}</p>
+                    </div>
+                  )}
+                  
+                  {selectedBuyer.nda_version_signed && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Signed NDA Version</label>
+                      <p className="mt-1 text-sm text-gray-900">{selectedBuyer.nda_version_signed}</p>
                     </div>
                   )}
                   

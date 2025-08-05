@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { authenticateApiRequest } from '@/lib/auth-utils'
 
-// Only create client if environment variables are available
-const createSupabaseClient = () => {
+// Create admin client for data operations
+const createAdminSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   
   if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase environment variables not configured')
+    throw new Error('Supabase admin environment variables not configured')
   }
   
   return createClient(supabaseUrl, supabaseServiceKey)
@@ -18,20 +19,15 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     
-    // Get current user from authorization header
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.replace('Bearer ', '')
-
-    // Verify the token and get user
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Authenticate the request using the new system
+    const authResult = await authenticateApiRequest(request)
+    if (!authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'Authentication failed' },
+        { status: 401 }
+      )
     }
 
     const { data: template, error } = await supabase
@@ -57,21 +53,18 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     
-    // Get current user from authorization header
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
+    // Authenticate the request using the new system
+    const authResult = await authenticateApiRequest(request)
+    if (!authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'Authentication failed' },
+        { status: 401 }
+      )
     }
-
-    const token = authHeader.replace('Bearer ', '')
-
-    // Verify the token and get user
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    
+    const { user } = authResult
 
     // Get existing template
     const { data: template, error: fetchError } = await supabase
@@ -118,22 +111,22 @@ export async function PUT(
     const requiredColumns = field_mappings ? Object.keys(field_mappings).filter(key => 
       field_mappings[key] && field_mappings[key].trim() !== ''
     ) : []
-    
     const optionalColumns = field_mappings ? Object.keys(field_mappings).filter(key => 
       !field_mappings[key] || field_mappings[key].trim() === ''
     ) : []
 
-    // Update template with correct column names
+    // Update the template
     const { data: updatedTemplate, error } = await supabase
       .from('import_templates')
       .update({
         name,
         description,
         import_type,
+        field_mappings: field_mappings || {},
         required_columns: requiredColumns,
         optional_columns: optionalColumns,
-        sample_data: template.sample_data || [],
-        validation_rules: validation_rules || template.validation_rules || []
+        validation_rules: validation_rules || [],
+        updated_at: new Date().toISOString()
       })
       .eq('id', params.id)
       .select()
@@ -156,26 +149,23 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     
-    // Get current user from authorization header
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
+    // Authenticate the request using the new system
+    const authResult = await authenticateApiRequest(request)
+    if (!authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'Authentication failed' },
+        { status: 401 }
+      )
     }
+    
+    const { user } = authResult
 
-    const token = authHeader.replace('Bearer ', '')
-
-    // Verify the token and get user
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if template exists and user has permission
+    // Get existing template to check ownership
     const { data: template, error: fetchError } = await supabase
       .from('import_templates')
-      .select('id, created_by')
+      .select('*')
       .eq('id', params.id)
       .single()
 
@@ -188,7 +178,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized to delete this template' }, { status: 403 })
     }
 
-    // Delete template
+    // Delete the template
     const { error } = await supabase
       .from('import_templates')
       .delete()
@@ -199,7 +189,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Failed to delete template' }, { status: 500 })
     }
 
-    return NextResponse.json({ message: 'Template deleted successfully' })
+    return NextResponse.json({ 
+      success: true,
+      message: 'Template deleted successfully' 
+    })
   } catch (error) {
     console.error('Error in template DELETE:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

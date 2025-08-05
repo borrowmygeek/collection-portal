@@ -67,11 +67,11 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   console.log('🔒 ProtectedRoute: Access granted')
 
   // Check user role and render appropriate content
-  if (profile.role === 'platform_admin') {
+  if (profile.activeRole.roleType === 'platform_admin') {
     return <>{children}</>
-  } else if (profile.role === 'agency_admin') {
+  } else if (profile.activeRole.roleType === 'agency_admin') {
     return <>{children}</>
-  } else if (profile.role === 'agency_user') {
+  } else if (profile.activeRole.roleType === 'agency_user') {
     return <>{children}</>
   } else {
     return (

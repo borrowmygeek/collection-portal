@@ -57,9 +57,9 @@ export default function TestPage() {
             <div className="space-y-2">
               <p><strong>Profile ID:</strong> {profile.id}</p>
               <p><strong>Full Name:</strong> {profile.full_name}</p>
-              <p><strong>Role:</strong> {profile.role}</p>
+              <p><strong>Role:</strong> {profile.activeRole.roleType}</p>
               <p><strong>Status:</strong> {profile.status}</p>
-              <p><strong>Agency ID:</strong> {profile.agency_id || 'None'}</p>
+              <p><strong>Organization ID:</strong> {profile.activeRole.organizationId || 'None'}</p>
             </div>
           ) : (
             <p className="text-red-600">No profile found</p>

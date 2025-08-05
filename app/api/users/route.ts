@@ -1,20 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { authenticateApiRequest, requirePlatformAdmin } from '@/lib/auth-utils'
+import { authenticateApiRequest } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
-import { logUserAction, logSecurityEvent, AUDIT_ACTIONS } from '@/lib/audit-log'
+import { logDataAccess, logDataModification, logSecurityEvent, logUserAction, AUDIT_ACTIONS } from '@/lib/audit-log'
 import { validateInput, createUserSchema, sanitizeObject, commonSanitizers, containsSqlInjection } from '@/lib/validation'
 
 // Force dynamic runtime for this API route
 export const dynamic = 'force-dynamic'
 
-// Only create client if environment variables are available
-const createSupabaseClient = () => {
+// Create admin client for data operations
+const createAdminSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   
   if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase environment variables not configured')
+    throw new Error('Supabase admin environment variables not configured')
   }
   
   return createClient(supabaseUrl, supabaseServiceKey)
@@ -57,11 +57,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Check permissions - only platform admins can view all users
-    if (!requirePlatformAdmin(user)) {
+    if (user.activeRole.roleType !== 'platform_admin') {
       await logSecurityEvent(
         user.id,
         AUDIT_ACTIONS.SECURITY_VIOLATION,
-        { endpoint: '/api/users', method: 'GET', requiredRole: 'platform_admin' },
+        { endpoint: '/api/users', method: 'GET', requiredRole: 'platform_admin', userRole: user.activeRole.roleType },
         false,
         'Insufficient permissions',
         request
@@ -72,12 +72,23 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     
+    // Fetch users with their roles from the new multi-role system
     const { data: users, error } = await supabase
       .from('platform_users')
       .select(`
         *,
+        user_roles(
+          id,
+          role_type,
+          organization_type,
+          organization_id,
+          is_active,
+          is_primary,
+          permissions,
+          created_at
+        ),
         agency:master_agencies(
           id,
           name,
@@ -102,16 +113,44 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Transform the data to include primary role and all roles
+    const transformedUsers = users?.map(user => {
+      const primaryRole = user.user_roles?.find((role: any) => role.is_primary)
+      const activeRoles = user.user_roles?.filter((role: any) => role.is_active) || []
+      
+      return {
+        ...user,
+        primary_role: primaryRole ? {
+          id: primaryRole.id,
+          role_type: primaryRole.role_type,
+          organization_type: primaryRole.organization_type,
+          organization_id: primaryRole.organization_id,
+          permissions: primaryRole.permissions
+        } : null,
+        roles: activeRoles.map((role: any) => ({
+          id: role.id,
+          role_type: role.role_type,
+          organization_type: role.organization_type,
+          organization_id: role.organization_id,
+          is_primary: role.is_primary,
+          permissions: role.permissions,
+          created_at: role.created_at
+        })),
+        // For backward compatibility, include the old role field
+        role: primaryRole?.role_type || 'platform_user'
+      }
+    }) || []
+
     // Log successful data access
     await logUserAction(
       user.id,
       AUDIT_ACTIONS.DATA_VIEW,
       'all',
-      { count: users?.length || 0 },
+      { count: transformedUsers.length },
       request
     )
 
-    return NextResponse.json(users || [])
+    return NextResponse.json(transformedUsers)
 
   } catch (error) {
     console.error('Error:', error)
@@ -159,11 +198,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is platform admin
-    if (!requirePlatformAdmin(user)) {
+    if (user.activeRole.roleType !== 'platform_admin') {
       await logSecurityEvent(
         user.id,
         AUDIT_ACTIONS.SECURITY_VIOLATION,
-        { endpoint: '/api/users', method: 'POST', requiredRole: 'platform_admin' },
+        { endpoint: '/api/users', method: 'POST', requiredRole: 'platform_admin', userRole: user.activeRole.roleType },
         false,
         'Insufficient permissions',
         request
@@ -174,7 +213,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     const body = await request.json()
     
     // Input validation and sanitization
@@ -199,9 +238,8 @@ export async function POST(request: NextRequest) {
     const sanitizedData = sanitizeObject(validationResult.data, {
       email: commonSanitizers.email,
       full_name: commonSanitizers.name,
-      role: commonSanitizers.status,
       password: (pwd: string) => pwd, // Don't sanitize passwords
-      agency_id: (id: string) => id // Don't sanitize UUIDs
+      roles: (roles: any[]) => roles // Don't sanitize roles array
     })
 
     // Additional security checks
@@ -219,6 +257,33 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // Validate roles structure
+    const primaryRoles = sanitizedData.roles.filter((role: any) => role.is_primary)
+    if (primaryRoles.length === 0) {
+      return NextResponse.json(
+        { error: 'At least one role must be set as primary' },
+        { status: 400 }
+      )
+    }
+
+    if (primaryRoles.length > 1) {
+      return NextResponse.json(
+        { error: 'Only one role can be set as primary' },
+        { status: 400 }
+      )
+    }
+
+    // Validate that organization-specific roles have organization_id
+    const invalidRoles = sanitizedData.roles.filter((role: any) => 
+      role.organization_type !== 'platform' && !role.organization_id
+    )
+    if (invalidRoles.length > 0) {
+      return NextResponse.json(
+        { error: 'Organization-specific roles must have an organization selected' },
+        { status: 400 }
+      )
+    }
     
     // Log the attempt (without sensitive data)
     await logUserAction(
@@ -227,28 +292,43 @@ export async function POST(request: NextRequest) {
       'new',
       { 
         email: sanitizedData.email,
-        role: sanitizedData.role,
         full_name: sanitizedData.full_name,
-        agency_id: sanitizedData.agency_id || null
+        roles_count: sanitizedData.roles.length,
+        primary_role: primaryRoles[0].role_type
       },
       request
     )
 
-    console.log('Received user creation request:', { ...sanitizedData, password: '[REDACTED]' })
+    console.log('Received user creation request:', { 
+      email: sanitizedData.email,
+      full_name: sanitizedData.full_name,
+      roles_count: sanitizedData.roles.length,
+      password: '[REDACTED]' 
+    })
     
     // Validate required fields (redundant but good for logging)
-    if (!sanitizedData.email || !sanitizedData.full_name || !sanitizedData.role || !sanitizedData.password) {
-      console.log('Missing required fields:', { email: !!sanitizedData.email, full_name: !!sanitizedData.full_name, role: !!sanitizedData.role, password: !!sanitizedData.password })
+    if (!sanitizedData.email || !sanitizedData.full_name || !sanitizedData.password || !sanitizedData.roles) {
+      console.log('Missing required fields:', { 
+        email: !!sanitizedData.email, 
+        full_name: !!sanitizedData.full_name, 
+        password: !!sanitizedData.password,
+        roles: !!sanitizedData.roles
+      })
       await logSecurityEvent(
         user.id,
         AUDIT_ACTIONS.SECURITY_VIOLATION,
-        { endpoint: '/api/users', method: 'POST', missingFields: { email: !!sanitizedData.email, full_name: !!sanitizedData.full_name, role: !!sanitizedData.role, password: !!sanitizedData.password } },
+        { endpoint: '/api/users', method: 'POST', missingFields: { 
+          email: !!sanitizedData.email, 
+          full_name: !!sanitizedData.full_name, 
+          password: !!sanitizedData.password,
+          roles: !!sanitizedData.roles
+        }},
         false,
         'Missing required fields',
         request
       )
       return NextResponse.json(
-        { error: 'Email, full name, role, and password are required' },
+        { error: 'Email, full name, password, and roles are required' },
         { status: 400 }
       )
     }
@@ -301,7 +381,7 @@ export async function POST(request: NextRequest) {
       email_confirm: true,
       user_metadata: {
         full_name: sanitizedData.full_name,
-        role: sanitizedData.role
+        role: primaryRoles[0].role_type // Use primary role for auth metadata
       }
     })
 
@@ -331,14 +411,7 @@ export async function POST(request: NextRequest) {
     console.log('Fetching platform user created by trigger...')
     const { data: platformUser, error: platformError } = await supabase
       .from('platform_users')
-      .select(`
-        *,
-        agency:master_agencies(
-          id,
-          name,
-          code
-        )
-      `)
+      .select('id')
       .eq('auth_user_id', authUser.user.id)
       .single()
 
@@ -360,20 +433,88 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('Platform user created by trigger successfully:', platformUser)
+    // Create all roles for the user
+    console.log('Creating roles for user...')
+    const roleData = sanitizedData.roles.map((role: any) => ({
+      user_id: platformUser.id,
+      role_type: role.role_type,
+      organization_type: role.organization_type,
+      organization_id: role.organization_id,
+      is_active: true,
+      is_primary: role.is_primary,
+      permissions: role.permissions || {}
+    }))
+
+    const { data: userRoles, error: roleError } = await supabase
+      .from('user_roles')
+      .insert(roleData)
+      .select()
+
+    if (roleError) {
+      console.error('Error creating user roles:', roleError)
+      // Clean up auth user and platform user
+      await supabase.auth.admin.deleteUser(authUser.user.id)
+      await supabase.from('platform_users').delete().eq('id', platformUser.id)
+      await logSecurityEvent(
+        user.id,
+        AUDIT_ACTIONS.SECURITY_VIOLATION,
+        { endpoint: '/api/users', method: 'POST', error: roleError.message },
+        false,
+        'Failed to create user roles',
+        request
+      )
+      return NextResponse.json(
+        { error: 'Failed to create user roles' },
+        { status: 500 }
+      )
+    }
+
+    // Fetch the complete user data with roles
+    const { data: completeUser, error: fetchError } = await supabase
+      .from('platform_users')
+      .select(`
+        *,
+        user_roles(
+          id,
+          role_type,
+          organization_type,
+          organization_id,
+          is_active,
+          is_primary,
+          permissions,
+          created_at
+        ),
+        agency:master_agencies(
+          id,
+          name,
+          code
+        )
+      `)
+      .eq('id', platformUser.id)
+      .single()
+
+    if (fetchError) {
+      console.error('Error fetching complete user data:', fetchError)
+      return NextResponse.json(
+        { error: 'User created but failed to fetch complete data' },
+        { status: 500 }
+      )
+    }
+
+    console.log('User created successfully with roles:', completeUser)
     await logUserAction(
       user.id,
       AUDIT_ACTIONS.USER_CREATE,
       'success',
       { 
-        email: platformUser.email,
-        role: platformUser.role,
-        full_name: platformUser.full_name,
-        agency_id: platformUser.agency_id || null
+        email: completeUser.email,
+        full_name: completeUser.full_name,
+        roles_count: userRoles.length,
+        primary_role: primaryRoles[0].role_type
       },
       request
     )
-    return NextResponse.json(platformUser, { status: 201 })
+    return NextResponse.json(completeUser, { status: 201 })
 
   } catch (error) {
     console.error('Unexpected error in POST /api/users:', error)

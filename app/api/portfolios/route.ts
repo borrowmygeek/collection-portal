@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { authenticateApiRequest, requireRole, requireClientAccess } from '@/lib/auth-utils'
+import { authenticateApiRequest } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
 import { logDataAccess, logDataModification, AUDIT_ACTIONS } from '@/lib/audit-log'
 
-// Only create client if environment variables are available
-const createSupabaseClient = () => {
+// Create admin client for data operations
+const createAdminSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   
   if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase environment variables not configured')
+    throw new Error('Supabase admin environment variables not configured')
   }
   
   return createClient(supabaseUrl, supabaseServiceKey)
@@ -37,14 +37,15 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user has permission to view portfolios
-    if (!requireRole(user, ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user'])) {
+    const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user']
+    if (!allowedRoles.includes(user.activeRole.roleType)) {
       return NextResponse.json(
         { error: 'Insufficient permissions' },
         { status: 403 }
       )
     }
 
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     
     let query = supabase
       .from('master_portfolios')
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     // Filter by user's client if not platform admin
-    if (user.role !== 'platform_admin') {
+    if (user.activeRole.roleType !== 'platform_admin') {
       return NextResponse.json(
         { error: 'Insufficient permissions to view portfolios' },
         { status: 403 }
@@ -119,14 +120,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user has permission to create portfolios
-    if (!requireRole(user, ['platform_admin', 'client_admin'])) {
+    const allowedRoles = ['platform_admin', 'client_admin']
+    if (!allowedRoles.includes(user.activeRole.roleType)) {
       return NextResponse.json(
         { error: 'Insufficient permissions to create portfolios' },
         { status: 403 }
       )
     }
 
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     const body = await request.json()
     
     // Validate required fields
@@ -138,7 +140,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user has access to the specified client
-    if (user.role !== 'platform_admin') {
+    if (user.activeRole.roleType !== 'platform_admin') {
       return NextResponse.json(
         { error: 'Insufficient permissions to create portfolios' },
         { status: 403 }

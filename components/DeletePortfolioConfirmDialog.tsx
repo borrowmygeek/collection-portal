@@ -88,13 +88,23 @@ export default function DeletePortfolioConfirmDialog({
             <Input
               id="confirm-filename"
               value={confirmFileName}
-              onChange={(e) => setConfirmFileName(e.target.value)}
+              onChange={(e) => {
+                console.log('Input change:', e.target.value)
+                setConfirmFileName(e.target.value)
+              }}
+              onFocus={(e) => console.log('Input focused:', e.target.value)}
+              onBlur={(e) => console.log('Input blurred:', e.target.value)}
               placeholder="Enter file name to confirm"
               className={confirmFileName !== fileName && confirmFileName.length > 0 ? 'border-red-300' : ''}
+              disabled={false}
+              readOnly={false}
+              autoComplete="off"
+              spellCheck="false"
             />
             {confirmFileName !== fileName && confirmFileName.length > 0 && (
               <p className="text-xs text-red-600 mt-1">File name does not match</p>
             )}
+            <p className="text-xs text-gray-500 mt-1">Current input value: "{confirmFileName}"</p>
           </div>
 
           <div className="flex justify-end space-x-3 pt-4">

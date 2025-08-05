@@ -18,6 +18,9 @@ export interface MasterBuyer {
   nda_signed: boolean
   nda_signed_date?: string
   nda_ip_address?: string
+  current_nda_version?: string
+  nda_version_signed?: string
+  nda_compliance_status?: 'pending' | 'compliant' | 'non_compliant' | 'expired'
   status: 'pending' | 'approved' | 'suspended' | 'inactive'
   verification_notes?: string
   created_at: string
@@ -28,6 +31,8 @@ export interface NDAAgreement {
   id: string
   buyer_id: string
   agreement_version: string
+  template_id?: string
+  template_version?: string
   agreement_text: string
   ip_address?: string
   user_agent?: string
@@ -141,8 +146,19 @@ export interface NDATemplate {
   title: string
   content: string
   is_active: boolean
+  effective_date: string
+  expiry_date?: string
+  created_by?: string
   created_at: string
   updated_at: string
+}
+
+export interface NDACompliance {
+  is_compliant: boolean
+  current_version?: string
+  signed_version?: string
+  compliance_status: 'pending' | 'compliant' | 'non_compliant' | 'expired'
+  message: string
 }
 
 // Form types for creating/editing

@@ -79,18 +79,18 @@ export async function middleware(req: NextRequest) {
     return response
   }
 
+  // For public routes, always allow access (including /auth/login)
+  if (isPublicRoute) {
+    console.log('🟡 [MIDDLEWARE] Public route - allowing access')
+    console.log('✅ Middleware: Allowing request to continue')
+    return response
+  }
+
   // For client-side auth routes, let the client handle authentication
   // This prevents middleware from interfering with client-side auth
   if (isClientSideAuthRoute) {
     console.log('🟡 [MIDDLEWARE] Client-side auth route - allowing client to handle authentication')
     console.log('✅ Middleware: Allowing request to continue (client-side auth will handle)')
-    return response
-  }
-
-  // For public routes, allow access
-  if (isPublicRoute) {
-    console.log('🟡 [MIDDLEWARE] Public route - allowing access')
-    console.log('✅ Middleware: Allowing request to continue')
     return response
   }
 

@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { authenticateApiRequest } from '@/lib/auth-utils'
 
-// Only create client if environment variables are available
-const createSupabaseClient = () => {
+// Create admin client for data operations
+const createAdminSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   
   if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase environment variables not configured')
+    throw new Error('Supabase admin environment variables not configured')
   }
   
   return createClient(supabaseUrl, supabaseServiceKey)
@@ -15,20 +16,15 @@ const createSupabaseClient = () => {
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     
-    // Get current user from authorization header
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
-    }
-
-    const token = authHeader.replace('Bearer ', '')
-
-    // Verify the token and get user
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Authenticate the request using the new system
+    const authResult = await authenticateApiRequest(request)
+    if (!authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'Authentication failed' },
+        { status: 401 }
+      )
     }
 
     // Get templates - users can see all templates
@@ -51,22 +47,18 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     
-    // Get current user from authorization header
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Missing or invalid authorization header' }, { status: 401 })
+    // Authenticate the request using the new system
+    const authResult = await authenticateApiRequest(request)
+    if (!authResult.user) {
+      return NextResponse.json(
+        { error: authResult.error || 'Authentication failed' },
+        { status: 401 }
+      )
     }
-
-    const token = authHeader.replace('Bearer ', '')
-
-    // Verify the token and get user
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
+    
+    const { user } = authResult
     const body = await request.json()
     const { name, description, import_type, field_mappings, validation_rules } = body
 

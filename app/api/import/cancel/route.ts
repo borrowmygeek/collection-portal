@@ -1,34 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { authenticateApiRequest } from '@/lib/auth-utils'
 
-const createSupabaseClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+// Create admin client for data operations
+const createAdminSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Supabase admin environment variables not configured')
+  }
   
   return createClient(supabaseUrl, supabaseServiceKey)
 }
 
 export async function POST(request: NextRequest) {
   try {
-    // Get authorization header
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json(
-        { error: 'Missing or invalid authorization header' },
-        { status: 401 }
-      )
-    }
-    
-    const token = authHeader.substring(7)
-    
-    // Create Supabase client
-    const supabase = createSupabaseClient()
-    
-    // Verify the user
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    // Authenticate the request
+    const { user, error: authError } = await authenticateApiRequest(request)
     if (authError || !user) {
       return NextResponse.json(
-        { error: 'Invalid authentication token' },
+        { error: authError || 'Authentication failed' },
         { status: 401 }
       )
     }
@@ -44,27 +36,15 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // Get the platform user
-    const { data: platformUser, error: userError } = await supabase
-      .from('platform_users')
-      .select('id, role')
-      .eq('auth_user_id', user.id)
-      .single()
-    
-    if (userError || !platformUser) {
-      return NextResponse.json(
-        { error: 'Platform user not found' },
-        { status: 404 }
-      )
-    }
-    
     // Check if user is platform admin
-    if (platformUser.role !== 'platform_admin') {
+    if (user.activeRole.roleType !== 'platform_admin') {
       return NextResponse.json(
         { error: 'Insufficient permissions to cancel import jobs' },
         { status: 403 }
       )
     }
+
+    const supabase = createAdminSupabaseClient()
     
     // Get the import job
     const { data: job, error: jobError } = await supabase

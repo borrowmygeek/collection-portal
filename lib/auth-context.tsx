@@ -4,17 +4,33 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 
+// Version identifier to help with cache busting and debugging
+console.log('🔄 Auth Context v2.0 - Clean Implementation Loaded')
+
 interface UserProfile {
   id: string
   auth_user_id: string
   email: string
   full_name: string
-  role: 'platform_admin' | 'platform_user' | 'agency_admin' | 'agency_user'
-  agency_id?: string
-  permissions: any
   status: 'active' | 'inactive' | 'suspended'
-  last_login_at?: string
-  user_metadata?: { role: string }
+  // Current active role information
+  activeRole: {
+    roleId: string
+    roleType: 'platform_admin' | 'agency_admin' | 'agency_user' | 'client_admin' | 'client_user' | 'buyer'
+    organizationType: 'platform' | 'agency' | 'client' | 'buyer'
+    organizationId?: string
+    organizationName: string
+    permissions: Record<string, any>
+  }
+  // All available roles for the user
+  availableRoles: Array<{
+    id: string
+    roleType: 'platform_admin' | 'agency_admin' | 'agency_user' | 'client_admin' | 'client_user' | 'buyer'
+    organizationType: 'platform' | 'agency' | 'client' | 'buyer'
+    organizationId?: string
+    organizationName: string
+    permissions: Record<string, any>
+  }>
 }
 
 interface AuthContextType {
@@ -28,11 +44,9 @@ interface AuthContextType {
   isClientAdmin: boolean
   // Auth functions
   signIn: (email: string, password: string) => Promise<{ error: any }>
-  signUp: (email: string, password: string, userData: any) => Promise<{ error: any }>
   signOut: () => Promise<void>
   resetPassword: (email: string) => Promise<{ error: any }>
-  updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: any }>
-  hasPermission: (permission: string) => boolean
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -42,244 +56,211 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [profileLoading, setProfileLoading] = useState(false)
 
-  // Computed boolean properties
-  const isPlatformAdmin = profile?.role === 'platform_admin'
-  const isAgencyAdmin = profile?.role === 'agency_admin'
-  const isClientAdmin = profile?.role === 'agency_user' // Assuming client admin is agency_user
-
-  // Fetch user profile from platform_users table
+  // Simple, clean profile fetch function
   const fetchUserProfile = async (userId: string): Promise<UserProfile | null> => {
     try {
-      console.log('🔍 Fetching user profile for userId:', userId)
-      setProfileLoading(true)
+      console.log('🔍 Fetching user profile for:', userId)
       
-      // Add timeout to prevent hanging
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 10000) // 10 second timeout
-      })
-      
-      const fetchPromise = supabase
+      // Get basic profile data
+      const { data: profileData, error: profileError } = await supabase
         .from('platform_users')
-        .select('*')
+        .select('id, email, auth_user_id, full_name, status')
         .eq('auth_user_id', userId)
         .single()
 
-      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any
-
-      if (error) {
-        console.error('❌ Error fetching user profile:', error)
-        console.error('❌ Error details:', {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code
-        })
-        console.log('🔍 This might mean the user exists in auth.users but not in platform_users')
-        console.log('🔍 The trigger that creates platform_users records might not be working')
+      if (profileError || !profileData) {
+        console.error('❌ Profile fetch error:', profileError)
         return null
       }
 
-      console.log('✅ User profile found:', data)
-      return data ? (data as unknown as UserProfile) : null
+      console.log('✅ Basic profile fetched:', profileData.id)
+
+      // Get role session token from localStorage if available
+      let roleSessionToken: string | null = null
+      if (typeof window !== 'undefined') {
+        roleSessionToken = localStorage.getItem('roleSessionToken')
+      }
+
+      // Get active role with session token if available
+      const activeRoleResult = await supabase.rpc('get_user_active_role', { 
+        p_user_id: profileData.id,
+        p_session_token: roleSessionToken
+      })
+
+      // Get all roles
+      const allRolesResult = await supabase.rpc('get_user_roles_simple', { p_user_id: profileData.id })
+
+      if (activeRoleResult.error) {
+        console.error('❌ Active role fetch error:', activeRoleResult.error)
+        return null
+      }
+
+      if (allRolesResult.error) {
+        console.error('❌ All roles fetch error:', allRolesResult.error)
+        return null
+      }
+
+      if (!activeRoleResult.data) {
+        console.error('❌ No active role found')
+        return null
+      }
+
+      // Transform the allRolesData to camelCase format
+      const availableRoles = (Array.isArray(allRolesResult.data) ? allRolesResult.data : []).map((role: any) => ({
+        id: role.id,
+        roleType: role.role_type,
+        organizationType: role.organization_type,
+        organizationId: role.organization_id,
+        organizationName: role.organization_name,
+        permissions: role.permissions || {}
+      }))
+
+      const userProfile: UserProfile = {
+        id: profileData.id as string,
+        auth_user_id: profileData.auth_user_id as string,
+        email: profileData.email as string,
+        full_name: profileData.full_name as string,
+        status: profileData.status as 'active' | 'inactive' | 'suspended',
+        activeRole: {
+          roleId: (activeRoleResult.data as any).role_id as string,
+          roleType: (activeRoleResult.data as any).role_type as 'platform_admin' | 'agency_admin' | 'agency_user' | 'client_admin' | 'client_user' | 'buyer',
+          organizationType: (activeRoleResult.data as any).organization_type as 'platform' | 'agency' | 'client' | 'buyer',
+          organizationId: (activeRoleResult.data as any).organization_id as string,
+          organizationName: (activeRoleResult.data as any).organization_name as string || 'Unknown Organization',
+          permissions: (activeRoleResult.data as any).permissions || {}
+        },
+        availableRoles
+      }
+
+      console.log('✅ User profile loaded successfully')
+      return userProfile
+
     } catch (error) {
-      console.error('❌ Exception in fetchUserProfile:', error)
-      console.error('❌ Exception type:', typeof error)
-      console.error('❌ Exception message:', (error as any)?.message)
+      console.error('❌ Profile fetch failed:', error)
       return null
-    } finally {
-      setProfileLoading(false)
     }
   }
 
+  // Clean auth initialization
   useEffect(() => {
-    // Get initial session
-    const getInitialSession = async () => {
+    let mounted = true
+
+    const initializeAuth = async () => {
       try {
-        console.log('🔄 Auth context: Getting initial session...')
-        const { data: { session } } = await supabase.auth.getSession()
-        console.log('🔄 Auth context: Initial session result:', { hasSession: !!session, userEmail: session?.user?.email })
+        console.log('🔄 [AUTH v2.0] Initializing clean auth system...')
         
-        setSession(session)
-        setUser(session?.user ?? null)
+        // Get initial session
+        const { data: { session }, error } = await supabase.auth.getSession()
         
-        if (session?.user) {
-          console.log('🔄 Auth context: Fetching initial profile...')
-          // Fetch profile and wait for it to complete before setting loading to false
-          const userProfile = await fetchUserProfile(session.user.id)
-          setProfile(userProfile)
-          console.log('🔄 Auth context: Initial profile loaded:', { hasProfile: !!userProfile })
+        if (error) {
+          console.error('❌ Session error:', error)
+          if (mounted) setLoading(false)
+          return
         }
-        
-        // Only set loading to false after profile is fetched (or if no user)
-        console.log('🔄 Auth context: Setting loading to false')
-        setLoading(false)
+
+        if (session?.user) {
+          console.log('🔄 User session found:', session.user.email)
+          setUser(session.user)
+          setSession(session)
+          
+          // Fetch profile
+          const userProfile = await fetchUserProfile(session.user.id)
+          if (mounted && userProfile) {
+            setProfile(userProfile)
+          }
+        } else {
+          console.log('🔄 No session found')
+        }
       } catch (error) {
-        console.error('❌ Error getting initial session:', error)
-        setLoading(false)
+        console.error('❌ Auth initialization error:', error)
+      } finally {
+        if (mounted) setLoading(false)
       }
     }
 
-    getInitialSession()
+    // Set up auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔄 Auth state change:', event, session?.user?.email)
+      
+      if (!mounted) return
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('🔄 Auth context: Auth state change:', event, session?.user?.email)
+      if (event === 'SIGNED_IN' && session?.user) {
+        setUser(session.user)
         setSession(session)
-        setUser(session?.user ?? null)
+        setLoading(true)
         
-        if (session?.user) {
-          console.log('🔄 Auth context: Fetching profile after auth change...')
-          // Fetch profile and wait for it to complete
-          const userProfile = await fetchUserProfile(session.user.id)
+        const userProfile = await fetchUserProfile(session.user.id)
+        if (mounted && userProfile) {
           setProfile(userProfile)
-          console.log('🔄 Auth context: Profile loaded after auth change:', { hasProfile: !!userProfile })
-        } else {
-          console.log('🔄 Auth context: No session, clearing profile')
-          setProfile(null)
         }
-        
-        // Set loading to false after profile is fetched
-        console.log('🔄 Auth context: Setting loading to false after auth change')
+        setLoading(false)
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setSession(null)
+        setProfile(null)
         setLoading(false)
       }
-    )
+    })
 
+    // Initialize auth
+    initializeAuth()
+
+    // Cleanup
     return () => {
+      mounted = false
       subscription.unsubscribe()
     }
   }, [])
 
+  // Auth functions
   const signIn = async (email: string, password: string) => {
-    try {
-      console.log('🔄 Auth context: Starting sign in...')
-      setLoading(true) // Set loading to true during sign in
-      
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-      
-      console.log('🔄 Auth context: Sign in response received', { 
-        hasData: !!data, 
-        hasError: !!error,
-        hasUser: !!data?.user,
-        hasSession: !!data?.session 
-      })
-      
-      if (error) {
-        console.error('❌ Auth context: Sign in error:', error)
-        setLoading(false) // Reset loading on error
-        return { error }
-      }
-      
-      if (!data?.user || !data?.session) {
-        console.error('❌ Auth context: No user or session in response')
-        setLoading(false) // Reset loading on error
-        return { error: { message: 'Authentication failed - no user or session returned' } }
-      }
-      
-      console.log('✅ Auth context: Sign in successful')
-      // Don't set loading to false here - let the auth state change handler do it
-      return { error: null }
-    } catch (err) {
-      console.error('❌ Auth context: Unexpected error during sign in:', err)
-      setLoading(false) // Reset loading on error
-      return { error: { message: 'An unexpected error occurred during sign in' } }
-    }
-  }
-
-  const signUp = async (email: string, password: string, userData: any) => {
-    const { error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
-      options: {
-        data: userData
-      }
     })
     return { error }
   }
 
   const signOut = async () => {
-    try {
-      console.log('🔄 Starting sign out process...')
-      
-      // Clear local state first
-      setUser(null)
-      setSession(null)
-      setProfile(null)
-      
-      // Call Supabase sign out
-      const { error } = await supabase.auth.signOut()
-      
-      if (error) {
-        console.error('❌ Error during sign out:', error)
-        throw error
-      }
-      
-      console.log('✅ Sign out successful')
-      
-      // Force redirect to login page
-      window.location.href = '/auth/login'
-      
-    } catch (error) {
-      console.error('❌ Sign out failed:', error)
-      // Even if there's an error, try to redirect to login
-      window.location.href = '/auth/login'
-    }
+    const { error } = await supabase.auth.signOut()
+    if (error) console.error('❌ Sign out error:', error)
   }
 
   const resetPassword = async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/reset-password`,
-    })
+    const { error } = await supabase.auth.resetPasswordForEmail(email)
     return { error }
   }
 
-  const updateProfile = async (updates: Partial<UserProfile>) => {
-    if (!profile) return { error: new Error('No profile to update') }
-    
-    const { error } = await supabase
-      .from('platform_users')
-      .update(updates)
-      .eq('id', profile.id)
-    
-    if (!error) {
-      setProfile({ ...profile, ...updates })
+  const refreshUser = async () => {
+    if (user) {
+      const userProfile = await fetchUserProfile(user.id)
+      if (userProfile) {
+        setProfile(userProfile)
+      }
     }
-    
-    return { error }
   }
 
-  const hasPermission = (permission: string): boolean => {
-    if (!profile) return false
-    if (profile.role === 'platform_admin') return true
-    return profile.permissions?.[permission] === true
-  }
+  // Computed values
+  const isPlatformAdmin = profile?.activeRole.roleType === 'platform_admin'
+  const isAgencyAdmin = profile?.activeRole.roleType === 'agency_admin'
+  const isClientAdmin = profile?.activeRole.roleType === 'client_admin'
 
-  const value = {
+  const value: AuthContextType = {
     user,
     session,
     profile,
-    loading: loading || profileLoading, // Consider both loading states
+    loading,
     isPlatformAdmin,
     isAgencyAdmin,
     isClientAdmin,
     signIn,
-    signUp,
     signOut,
     resetPassword,
-    updateProfile,
-    hasPermission,
+    refreshUser,
   }
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {

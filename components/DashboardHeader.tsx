@@ -6,6 +6,7 @@ import {
   MagnifyingGlassIcon,
   UserCircleIcon 
 } from '@heroicons/react/24/outline'
+import { useAuth } from '@/lib/auth-context'
 
 interface DashboardHeaderProps {
   title?: string
@@ -13,6 +14,7 @@ interface DashboardHeaderProps {
 
 export default function DashboardHeader({ title }: DashboardHeaderProps) {
   const [searchQuery, setSearchQuery] = useState('')
+  const { profile } = useAuth()
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-200">
@@ -53,7 +55,9 @@ export default function DashboardHeader({ title }: DashboardHeaderProps) {
             <div className="relative">
               <button className="flex items-center space-x-2 text-gray-700 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded-md">
                 <UserCircleIcon className="h-8 w-8" />
-                <span className="hidden md:block text-sm font-medium">Platform Admin</span>
+                <span className="hidden md:block text-sm font-medium">
+                  {profile?.full_name || profile?.email || 'User'}
+                </span>
               </button>
             </div>
           </div>

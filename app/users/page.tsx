@@ -19,12 +19,32 @@ import {
   XMarkIcon
 } from '@heroicons/react/24/outline'
 
+interface UserRole {
+  id: string
+  role_type: string
+  organization_type: string
+  organization_id: string | null
+  is_primary: boolean
+  permissions: Record<string, any>
+  created_at: string
+}
+
+interface PrimaryRole {
+  id: string
+  role_type: string
+  organization_type: string
+  organization_id: string | null
+  permissions: Record<string, any>
+}
+
 interface User {
   id: string
   auth_user_id: string
   email: string
   full_name: string
-  role: string
+  role: string // For backward compatibility
+  primary_role: PrimaryRole | null
+  roles: UserRole[]
   agency_id: string | null
   status: string
   last_login_at: string | null
@@ -72,7 +92,7 @@ export default function UsersPage() {
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          user.email.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesRole = roleFilter === 'all' || user.role === roleFilter
+    const matchesRole = roleFilter === 'all' || user.primary_role?.role_type === roleFilter || user.role === roleFilter
     const matchesStatus = statusFilter === 'all' || user.status === statusFilter
     return matchesSearch && matchesRole && matchesStatus
   })
@@ -127,6 +147,12 @@ export default function UsersPage() {
         return 'bg-green-100 text-green-800'
       case 'agency_user':
         return 'bg-yellow-100 text-yellow-800'
+      case 'client_admin':
+        return 'bg-indigo-100 text-indigo-800'
+      case 'client_user':
+        return 'bg-pink-100 text-pink-800'
+      case 'buyer':
+        return 'bg-orange-100 text-orange-800'
       default:
         return 'bg-gray-100 text-gray-800'
     }
@@ -145,6 +171,35 @@ export default function UsersPage() {
     }
   }
 
+  const formatRoleName = (roleType: string) => {
+    if (!roleType || typeof roleType !== 'string') return 'Unknown Role'
+    return roleType.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())
+  }
+
+  const renderUserRoles = (user: User) => {
+    if (!user.roles || user.roles.length === 0) {
+      return (
+        <span className="text-sm text-gray-500">No roles assigned</span>
+      )
+    }
+
+    return (
+      <div className="flex flex-wrap gap-1">
+        {user.roles.map((role, index) => (
+          <div key={role.id} className="flex items-center gap-1">
+            <span className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded-full ${getRoleBadgeColor(role.role_type)}`}>
+                             {formatRoleName(role.role_type)}
+               {role.is_primary && (
+                 <span className="ml-1 text-xs">★</span>
+               )}
+            </span>
+            {index < user.roles.length - 1 && <span className="text-gray-300">•</span>}
+          </div>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <ProtectedRoute>
       <div className="flex h-screen bg-gray-50">
@@ -159,7 +214,7 @@ export default function UsersPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
-                  <p className="text-gray-600">Manage platform users and their permissions</p>
+                  <p className="text-gray-600">Manage platform users and their roles</p>
                 </div>
                 {isPlatformAdmin && (
                   <button 
@@ -201,6 +256,9 @@ export default function UsersPage() {
                     <option value="platform_user">Platform User</option>
                     <option value="agency_admin">Agency Admin</option>
                     <option value="agency_user">Agency User</option>
+                    <option value="client_admin">Client Admin</option>
+                    <option value="client_user">Client User</option>
+                    <option value="buyer">Buyer</option>
                   </select>
                   <select
                     className="input-field"
@@ -230,10 +288,10 @@ export default function UsersPage() {
                             User
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Role
+                            Roles
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Agency
+                            Primary Organization
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Status
@@ -263,13 +321,14 @@ export default function UsersPage() {
                                 </div>
                               </div>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getRoleBadgeColor(user.role)}`}>
-                                {user.role.replace('_', ' ')}
-                              </span>
+                            <td className="px-6 py-4">
+                              {renderUserRoles(user)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {user.agency?.name || 'Platform'}
+                              {user.primary_role?.organization_type === 'platform' ? 'Platform' : 
+                               user.primary_role?.organization_type === 'agency' ? (user.agency?.name || 'Agency') :
+                               user.primary_role?.organization_type === 'client' ? 'Client' :
+                               user.primary_role?.organization_type === 'buyer' ? 'Buyer' : 'N/A'}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getStatusBadgeColor(user.status)}`}>

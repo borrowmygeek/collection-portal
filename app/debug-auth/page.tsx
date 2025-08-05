@@ -33,9 +33,9 @@ export default function DebugAuthPage() {
       } : null,
       profile: profile ? {
         id: profile.id,
-        role: profile.role,
-        status: profile.status,
-        agencyId: profile.agency_id
+        activeRole: profile.activeRole,
+        availableRoles: profile.availableRoles,
+        status: profile.status
       } : null,
       loading,
       url: currentUrl,
@@ -111,10 +111,12 @@ export default function DebugAuthPage() {
             <h2 className="text-xl font-semibold mb-4">Profile Details</h2>
             {profile ? (
               <div className="space-y-2">
-                <div><strong>Role:</strong> {profile.role}</div>
+                <div><strong>Active Role:</strong> {profile.activeRole.roleType}</div>
+                <div><strong>Organization:</strong> {profile.activeRole.organizationType}</div>
+                <div><strong>Organization ID:</strong> {profile.activeRole.organizationId || 'None'}</div>
                 <div><strong>Status:</strong> {profile.status}</div>
-                <div><strong>Agency ID:</strong> {profile.agency_id || 'None'}</div>
                 <div><strong>Full Name:</strong> {profile.full_name}</div>
+                <div><strong>Available Roles:</strong> {profile.availableRoles.length}</div>
               </div>
             ) : (
               <p className="text-gray-500">No profile loaded</p>

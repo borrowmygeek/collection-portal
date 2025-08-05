@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { authenticateApiRequest, requireRole } from '@/lib/auth-utils'
+import { authenticateApiRequest } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
 import { logDataAccess, logDataModification, AUDIT_ACTIONS } from '@/lib/audit-log'
 
 // Force dynamic runtime for this API route
 export const dynamic = 'force-dynamic'
 
-const createSupabaseClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+// Create admin client for data operations
+const createAdminSupabaseClient = () => {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Supabase admin environment variables not configured')
+  }
+  
   return createClient(supabaseUrl, supabaseServiceKey)
 }
 
@@ -34,11 +40,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user has permission to view debt accounts
-    if (user.role !== 'platform_admin' && user.role !== 'agency_admin' && user.role !== 'agency_user') {
+    if (user.activeRole.roleType !== 'platform_admin' && user.activeRole.roleType !== 'agency_admin' && user.activeRole.roleType !== 'agency_user') {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
     }
 
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     const { searchParams } = new URL(request.url)
     
     // Build query
@@ -52,7 +58,7 @@ export async function GET(request: NextRequest) {
           first_name,
           last_name,
           ssn,
-          phone_numbers(
+          person_phones(
             id,
             number,
             phone_type,
@@ -93,7 +99,7 @@ export async function GET(request: NextRequest) {
     if (phoneSearch) {
       // Simple phone search - just look for the phone number in the persons.phone_numbers
       const normalizedPhone = phoneSearch.replace(/\D/g, '')
-      query = query.or(`persons.phone_numbers.number.ilike.%${normalizedPhone}%`)
+      query = query.or(`persons.person_phones.number.ilike.%${normalizedPhone}%`)
     }
 
     if (portfolioId) {
@@ -109,8 +115,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Apply agency filtering for non-platform admins
-    if (user.role !== 'platform_admin') {
-      query = query.eq('master_portfolios.agency_id', user.agency_id)
+    if (user.activeRole.roleType !== 'platform_admin') {
+      query = query.eq('master_portfolios.agency_id', user.activeRole.organizationId)
     }
 
     // Get total count for pagination
@@ -192,7 +198,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user has permission to create debt accounts
-    if (user.role !== 'platform_admin' && user.role !== 'agency_admin') {
+    if (user.activeRole.roleType !== 'platform_admin' && user.activeRole.roleType !== 'agency_admin') {
       return NextResponse.json(
         { error: 'Insufficient permissions to create debt accounts' },
         { status: 403 }
@@ -200,7 +206,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
 
     // Add created_by field
     const debtAccountData = {

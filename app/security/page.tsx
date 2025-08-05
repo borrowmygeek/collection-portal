@@ -7,15 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { createClient } from '@supabase/supabase-js'
 import { useAuth } from '@/lib/auth-context'
+import { supabase } from '@/lib/supabase'
 import { Sidebar } from '@/components/Sidebar'
 import DashboardHeader from '@/components/DashboardHeader'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
 
 interface AuditLog {
   id: string
@@ -113,7 +108,7 @@ export default function SecurityPage() {
         return
       }
 
-      setAuditLogs(logs || [])
+      setAuditLogs((logs as unknown as AuditLog[]) || [])
       setTotalPages(Math.ceil((count || 0) / 20))
 
       // Fetch security statistics

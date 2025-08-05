@@ -117,11 +117,7 @@ export default function ImportPage() {
 
   const fetchJobs = async () => {
     try {
-      const response = await fetch('/api/import', {
-        headers: {
-          'Authorization': `Bearer ${session?.access_token}`
-        }
-      })
+      const response = await authenticatedFetch('/api/import')
       const data = await response.json()
       setJobs(data.jobs || [])
     } catch (error) {
@@ -133,11 +129,7 @@ export default function ImportPage() {
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch('/api/import/templates', {
-        headers: {
-          'Authorization': `Bearer ${session?.access_token}`
-        }
-      })
+      const response = await authenticatedFetch('/api/import/templates')
       const data = await response.json()
       setTemplates(data.templates || [])
     } catch (error) {
@@ -188,7 +180,7 @@ export default function ImportPage() {
         formData.append('template_id', selectedTemplate)
       }
 
-      const response = await fetch('/api/import/preview', {
+      const response = await authenticatedFetch('/api/import/preview', {
         method: 'POST',
         body: formData
       })
@@ -415,11 +407,8 @@ export default function ImportPage() {
       // Add field mapping
       formData.append('field_mapping', JSON.stringify(fieldMapping))
 
-      const response = await fetch('/api/import', {
+      const response = await authenticatedFetch('/api/import', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session?.access_token}`
-        },
         body: formData
       })
 
@@ -471,14 +460,9 @@ export default function ImportPage() {
   }
 
   const handleCancelImportJob = async (job: ImportJob) => {
-    if (!session?.access_token) return
-
     try {
-      const response = await fetch(`/api/import/cancel?job_id=${job.id}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
+      const response = await authenticatedFetch(`/api/import/cancel?job_id=${job.id}`, {
+        method: 'POST'
       })
 
       if (response.ok) {
@@ -497,11 +481,7 @@ export default function ImportPage() {
 
   const downloadFailedRows = async (jobId: string) => {
     try {
-      const response = await fetch(`/api/import/failed-rows/${jobId}`, {
-        headers: {
-          'Authorization': `Bearer ${session?.access_token}`
-        }
-      })
+      const response = await authenticatedFetch(`/api/import/failed-rows/${jobId}`)
 
       if (!response.ok) {
         throw new Error(`Failed to download failed rows: ${response.statusText}`)
@@ -530,14 +510,11 @@ export default function ImportPage() {
   }
 
   const handleConfirmDeletePortfolio = async () => {
-    if (!jobToDelete || !session?.access_token) return
+    if (!jobToDelete) return
 
     try {
-      const response = await fetch(`/api/import?job_id=${jobToDelete.id}&file_name=${encodeURIComponent(jobToDelete.file_name)}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
+      const response = await authenticatedFetch(`/api/import?job_id=${jobToDelete.id}&file_name=${encodeURIComponent(jobToDelete.file_name)}`, {
+        method: 'DELETE'
       })
 
       if (response.ok) {
@@ -556,14 +533,11 @@ export default function ImportPage() {
   }
 
   const handleConfirmDeleteImportJob = async () => {
-    if (!jobToDeleteJob || !session?.access_token) return
+    if (!jobToDeleteJob) return
 
     try {
-      const response = await fetch(`/api/import?job_id=${jobToDeleteJob.id}&file_name=${encodeURIComponent(jobToDeleteJob.file_name)}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
+      const response = await authenticatedFetch(`/api/import?job_id=${jobToDeleteJob.id}&file_name=${encodeURIComponent(jobToDeleteJob.file_name)}`, {
+        method: 'DELETE'
       })
 
       if (response.ok) {
@@ -698,6 +672,7 @@ export default function ImportPage() {
                         className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value="accounts">Debt Accounts</option>
+                        <option value="skip_trace">Skip Trace</option>
                         <option value="portfolios">Portfolios</option>
                         <option value="clients">Clients</option>
                         <option value="agencies">Agencies</option>

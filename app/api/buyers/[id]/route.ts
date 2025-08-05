@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { authenticateApiRequest } from '@/lib/auth-utils'
 
-// Only create client if environment variables are available
-const createSupabaseClient = () => {
+// Create admin client for data operations
+const createAdminSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   
   if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase environment variables not configured')
+    throw new Error('Supabase admin environment variables not configured')
   }
   
   return createClient(supabaseUrl, supabaseServiceKey)
@@ -18,7 +19,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     
     const { data: buyer, error } = await supabase
       .from('master_buyers')
@@ -50,29 +51,24 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     const body = await request.json()
 
-    // Get the current user
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    // Authenticate the request using the new system
+    const authResult = await authenticateApiRequest(request)
+    if (!authResult.user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: authResult.error || 'Authentication failed' },
         { status: 401 }
       )
     }
+    
+    const { user } = authResult
 
     // Check if user is platform admin
-    const { data: userProfile } = await supabase
-      .from('auth.users')
-      .select('raw_user_meta_data')
-      .eq('id', user.id)
-      .single()
-
-    const isAdmin = userProfile?.raw_user_meta_data?.role === 'platform_admin'
-    if (!isAdmin) {
+    if (user.activeRole.roleType !== 'platform_admin') {
       return NextResponse.json(
-        { error: 'Insufficient permissions' },
+        { error: 'Insufficient permissions. Only platform admins can update buyers.' },
         { status: 403 }
       )
     }
@@ -113,28 +109,23 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     
-    // Get the current user
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+    // Authenticate the request using the new system
+    const authResult = await authenticateApiRequest(request)
+    if (!authResult.user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: authResult.error || 'Authentication failed' },
         { status: 401 }
       )
     }
+    
+    const { user } = authResult
 
     // Check if user is platform admin
-    const { data: userProfile } = await supabase
-      .from('auth.users')
-      .select('raw_user_meta_data')
-      .eq('id', user.id)
-      .single()
-
-    const isAdmin = userProfile?.raw_user_meta_data?.role === 'platform_admin'
-    if (!isAdmin) {
+    if (user.activeRole.roleType !== 'platform_admin') {
       return NextResponse.json(
-        { error: 'Insufficient permissions' },
+        { error: 'Insufficient permissions. Only platform admins can delete buyers.' },
         { status: 403 }
       )
     }
@@ -153,7 +144,10 @@ export async function DELETE(
       )
     }
 
-    return NextResponse.json({ message: 'Buyer deleted successfully' })
+    return NextResponse.json({ 
+      success: true,
+      message: 'Buyer deleted successfully'
+    })
 
   } catch (error) {
     console.error('Error:', error)

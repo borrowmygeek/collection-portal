@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { authenticateApiRequest, requireRole } from '@/lib/auth-utils'
+import { authenticateApiRequest } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
 import { logDataAccess, logDataModification } from '@/lib/audit-log'
 
-// Only create client if environment variables are available
-const createSupabaseClient = () => {
+// Create admin client for data operations
+const createAdminSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   
   if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase environment variables not configured')
+    throw new Error('Supabase admin environment variables not configured')
   }
   
   return createClient(supabaseUrl, supabaseServiceKey)
@@ -37,11 +37,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if user has permission to view sales
-    if (!requireRole(user, ['platform_admin', 'agency_admin', 'agency_user'])) {
+    const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user']
+    if (!allowedRoles.includes(user.activeRole.roleType)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
@@ -147,11 +148,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user has permission to create sales
-    if (!requireRole(user, ['platform_admin', 'agency_admin'])) {
+    const allowedRoles = ['platform_admin', 'agency_admin']
+    if (!allowedRoles.includes(user.activeRole.roleType)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const supabase = createSupabaseClient()
+    const supabase = createAdminSupabaseClient()
     const body = await request.json()
 
     // Validate required fields

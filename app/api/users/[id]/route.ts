@@ -389,7 +389,7 @@ export async function PUT(
               updatedUser.full_name,
               newRole.role_type,
               organizationName,
-              user.full_name || 'Platform Admin'
+              user.profile?.full_name || 'Platform Admin'
             )
           }
         } catch (emailError) {

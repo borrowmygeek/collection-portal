@@ -4,6 +4,7 @@ import { authenticateApiRequest } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
 import { logDataAccess, logDataModification, logSecurityEvent, logUserAction, AUDIT_ACTIONS } from '@/lib/audit-log'
 import { validateInput, createUserSchema, sanitizeObject, commonSanitizers, containsSqlInjection } from '@/lib/validation'
+import { sendUserAccountCreatedEmail } from '@/lib/email'
 
 // Force dynamic runtime for this API route
 export const dynamic = 'force-dynamic'
@@ -506,6 +507,19 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('User created successfully with roles:', completeUser)
+    
+    // Send welcome email to the new user
+    try {
+      await sendUserAccountCreatedEmail(
+        completeUser.email,
+        completeUser.full_name,
+        user.full_name || 'Platform Admin'
+      )
+    } catch (emailError) {
+      console.error('Error sending welcome email:', emailError)
+      // Don't fail the request if email fails
+    }
+    
     await logUserAction(
       user.id,
       AUDIT_ACTIONS.USER_CREATE,

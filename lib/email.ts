@@ -252,3 +252,157 @@ export const sendAccountStatusUpdateEmail = async (email: string, companyName: s
 
   return sendEmail({ to: email, subject, html })
 } 
+
+export const sendUserAccountCreatedEmail = async (email: string, fullName: string, createdBy: string) => {
+  const subject = 'Welcome to Collection Portal - Your Account Has Been Created'
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Welcome to Collection Portal</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #4f46e5; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+        .button { display: inline-block; background: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+        .footer { text-align: center; margin-top: 30px; color: #6b7280; font-size: 14px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Welcome to Collection Portal</h1>
+        </div>
+        <div class="content">
+          <h2>Hello ${fullName},</h2>
+          <p>Your account has been successfully created by <strong>${createdBy}</strong>.</p>
+          
+          <p>You can now log in to the platform using your email address and the password that was set up for you.</p>
+          
+          <p>If you need to reset your password, you can use the "Forgot Password" feature on the login page.</p>
+          
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/auth/login" class="button">Log In to Your Account</a>
+          
+          <p>Welcome aboard!</p>
+          
+          <p>Best regards,<br>The Collection Portal Team</p>
+        </div>
+        <div class="footer">
+          <p>This email was sent to ${email} because your account was created.</p>
+          <p>© 2024 Collection Portal. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+  
+  return sendEmail({ to: email, subject, html })
+}
+
+export const sendRoleAssignmentEmail = async (email: string, fullName: string, roleType: string, organizationName: string, assignedBy: string) => {
+  const subject = 'New Role Assignment - Collection Portal'
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>New Role Assignment</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #7c3aed; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+        .button { display: inline-block; background: #7c3aed; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+        .footer { text-align: center; margin-top: 30px; color: #6b7280; font-size: 14px; }
+        .role-box { background: #f3f4f6; border: 1px solid #d1d5db; padding: 15px; border-radius: 6px; margin: 20px 0; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>New Role Assignment</h1>
+        </div>
+        <div class="content">
+          <h2>Hello ${fullName},</h2>
+          <p>You have been assigned a new role in Collection Portal:</p>
+          
+          <div class="role-box">
+            <p><strong>Role:</strong> ${roleType.replace('_', ' ').toUpperCase()}</p>
+            <p><strong>Organization:</strong> ${organizationName}</p>
+            <p><strong>Assigned by:</strong> ${assignedBy}</p>
+          </div>
+          
+          <p>You can switch to this role using the role switcher in the platform.</p>
+          
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}" class="button">Access Platform</a>
+          
+          <p>Best regards,<br>The Collection Portal Team</p>
+        </div>
+        <div class="footer">
+          <p>This email was sent to ${email} to notify you of a new role assignment.</p>
+          <p>© 2024 Collection Portal. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+  
+  return sendEmail({ to: email, subject, html })
+}
+
+export const sendImportJobCompletedEmail = async (email: string, fullName: string, jobName: string, status: string, details: string) => {
+  const statusColor = status === 'completed' ? '#059669' : status === 'failed' ? '#dc2626' : '#6b7280'
+  const subject = `Import Job ${status.charAt(0).toUpperCase() + status.slice(1)} - ${jobName}`
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Import Job ${status.charAt(0).toUpperCase() + status.slice(1)}</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: ${statusColor}; color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { background: #f9fafb; padding: 30px; border-radius: 0 0 8px 8px; }
+        .button { display: inline-block; background: ${statusColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+        .footer { text-align: center; margin-top: 30px; color: #6b7280; font-size: 14px; }
+        .status-box { background: ${status === 'completed' ? '#f0fdf4' : status === 'failed' ? '#fef2f2' : '#f9fafb'}; border: 1px solid ${status === 'completed' ? '#bbf7d0' : status === 'failed' ? '#fecaca' : '#e5e7eb'}; padding: 15px; border-radius: 6px; margin: 20px 0; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Import Job ${status.charAt(0).toUpperCase() + status.slice(1)}</h1>
+        </div>
+        <div class="content">
+          <h2>Hello ${fullName},</h2>
+          <p>Your import job <strong>${jobName}</strong> has been ${status}.</p>
+          
+          <div class="status-box">
+            <p><strong>Status:</strong> ${status.toUpperCase()}</p>
+            <p><strong>Details:</strong></p>
+            <p>${details}</p>
+          </div>
+          
+          <a href="${process.env.NEXT_PUBLIC_APP_URL}/import" class="button">View Import Results</a>
+          
+          <p>You can view the results in the import section of the platform.</p>
+          
+          <p>Best regards,<br>The Collection Portal Team</p>
+        </div>
+        <div class="footer">
+          <p>This email was sent to ${email} to notify you of an import job completion.</p>
+          <p>© 2024 Collection Portal. All rights reserved.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `
+  
+  return sendEmail({ to: email, subject, html })
+} 

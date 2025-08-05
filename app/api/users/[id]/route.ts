@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
 import { logDataAccess, logDataModification, logSecurityEvent, logUserAction, AUDIT_ACTIONS } from '@/lib/audit-log'
+import { sendRoleAssignmentEmail } from '@/lib/email'
 
 // Force dynamic runtime for this API route
 export const dynamic = 'force-dynamic'
@@ -304,6 +305,9 @@ export async function PUT(
 
     // Handle role updates if provided
     if (body.roles && Array.isArray(body.roles)) {
+      // Track new roles for email notifications
+      const newRoles = []
+      
       // Update existing roles or create new ones
       for (const roleUpdate of body.roles) {
         if (roleUpdate.id) {
@@ -339,7 +343,58 @@ export async function PUT(
 
           if (roleCreateError) {
             console.error('Error creating role:', roleCreateError)
+          } else {
+            // Track new role for email notification
+            newRoles.push(roleUpdate)
           }
+        }
+      }
+      
+      // Send email notifications for new role assignments
+      if (newRoles.length > 0) {
+        try {
+          // Get organization names for the new roles
+          for (const newRole of newRoles) {
+            let organizationName = 'Platform'
+            
+            if (newRole.organization_id && newRole.organization_type !== 'platform') {
+              // Get organization name based on type
+              if (newRole.organization_type === 'agency') {
+                const { data: agency } = await supabase
+                  .from('master_agencies')
+                  .select('name')
+                  .eq('id', newRole.organization_id)
+                  .single()
+                organizationName = agency?.name || 'Unknown Agency'
+              } else if (newRole.organization_type === 'client') {
+                const { data: client } = await supabase
+                  .from('master_clients')
+                  .select('name')
+                  .eq('id', newRole.organization_id)
+                  .single()
+                organizationName = client?.name || 'Unknown Client'
+              } else if (newRole.organization_type === 'buyer') {
+                const { data: buyer } = await supabase
+                  .from('master_buyers')
+                  .select('company_name')
+                  .eq('id', newRole.organization_id)
+                  .single()
+                organizationName = buyer?.company_name || 'Unknown Buyer'
+              }
+            }
+            
+            // Send role assignment email
+            await sendRoleAssignmentEmail(
+              updatedUser.email,
+              updatedUser.full_name,
+              newRole.role_type,
+              organizationName,
+              user.full_name || 'Platform Admin'
+            )
+          }
+        } catch (emailError) {
+          console.error('Error sending role assignment emails:', emailError)
+          // Don't fail the request if email fails
         }
       }
     }

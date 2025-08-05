@@ -5,6 +5,7 @@ import { authenticateApiRequest } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
 import { logDataAccess, logDataModification, AUDIT_ACTIONS } from '@/lib/audit-log'
 import { sanitizeString, sanitizeEmail, sanitizePhone, sanitizeAddress, containsSqlInjection } from '@/lib/validation'
+import { sendImportJobCompletedEmail } from '@/lib/email'
 
 // Force dynamic runtime for this API route
 export const dynamic = 'force-dynamic'
@@ -739,6 +740,32 @@ async function processImportJob(jobId: string, supabase: any, userId: string, po
       })
       .eq('id', jobId)
 
+    // Send completion email notification
+    try {
+      // Get user details for email
+      const { data: userDetails } = await supabase
+        .from('platform_users')
+        .select('email, full_name')
+        .eq('id', userId)
+        .single()
+
+      if (userDetails) {
+        const status = failedRows === 0 ? 'completed' : 'completed_with_errors'
+        const details = `Successfully processed ${successfulRows} rows${failedRows > 0 ? ` with ${failedRows} failed rows` : ''}. ${job.import_type} import completed.`
+        
+        await sendImportJobCompletedEmail(
+          userDetails.email,
+          userDetails.full_name,
+          job.job_name || `Import Job ${jobId}`,
+          status,
+          details
+        )
+      }
+    } catch (emailError) {
+      console.error('Error sending import completion email:', emailError)
+      // Don't fail the import if email fails
+    }
+
   } catch (error: any) {
     console.error(`[IMPORT] Fatal error in import job ${jobId}:`, error)
     
@@ -750,6 +777,37 @@ async function processImportJob(jobId: string, supabase: any, userId: string, po
         errors: [{ message: error.message, severity: 'fatal' }]
       })
       .eq('id', jobId)
+
+    // Send failure email notification
+    try {
+      // Get user details for email
+      const { data: userDetails } = await supabase
+        .from('platform_users')
+        .select('email, full_name')
+        .eq('id', userId)
+        .single()
+
+      if (userDetails) {
+        const { data: job } = await supabase
+          .from('import_jobs')
+          .select('job_name, import_type')
+          .eq('id', jobId)
+          .single()
+
+        const details = `Import job failed with error: ${error.message}. Please check the import logs for more details.`
+        
+        await sendImportJobCompletedEmail(
+          userDetails.email,
+          userDetails.full_name,
+          job?.job_name || `Import Job ${jobId}`,
+          'failed',
+          details
+        )
+      }
+    } catch (emailError) {
+      console.error('Error sending import failure email:', emailError)
+      // Don't fail the import if email fails
+    }
     
     throw error
   }

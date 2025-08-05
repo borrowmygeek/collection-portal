@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('✅ Import preview: Authentication successful for user:', user.activeRole.roleType)
+    console.log('✅ Import preview: Authentication successful for user:', user?.activeRole?.roleType)
 
     // Check if user has permission to preview imports
     const allowedRoles = ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user', 'buyer']

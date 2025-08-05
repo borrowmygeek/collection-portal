@@ -223,8 +223,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut()
-    if (error) console.error('❌ Sign out error:', error)
+    try {
+      console.log('🔄 Starting sign out process...')
+      
+      // Clear role session token from localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('roleSessionToken')
+        console.log('✅ Cleared role session token from localStorage')
+      }
+      
+      // Sign out from Supabase
+      const { error } = await supabase.auth.signOut()
+      if (error) {
+        console.error('❌ Sign out error:', error)
+        throw error
+      }
+      
+      console.log('✅ Successfully signed out from Supabase')
+      
+      // Clear local state immediately
+      setUser(null)
+      setSession(null)
+      setProfile(null)
+      setLoading(false)
+      
+      console.log('✅ Cleared local auth state')
+      
+      // Redirect to login page
+      if (typeof window !== 'undefined') {
+        window.location.href = '/auth/login'
+      }
+      
+    } catch (error) {
+      console.error('❌ Error during sign out:', error)
+      // Even if there's an error, clear local state
+      setUser(null)
+      setSession(null)
+      setProfile(null)
+      setLoading(false)
+      
+      // Still redirect to login page even if there was an error
+      if (typeof window !== 'undefined') {
+        window.location.href = '/auth/login'
+      }
+    }
   }
 
   const resetPassword = async (email: string) => {

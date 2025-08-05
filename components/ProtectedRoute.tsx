@@ -52,7 +52,8 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   }
 
   // If user is authenticated but profile is still loading, wait a bit longer
-  if (!profile) {
+  // But only if we're not in a sign-out state (user exists)
+  if (user && !profile) {
     console.log('🔒 ProtectedRoute: User authenticated but profile not loaded yet...')
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -67,11 +68,11 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   console.log('🔒 ProtectedRoute: Access granted')
 
   // Check user role and render appropriate content
-  if (profile.activeRole.roleType === 'platform_admin') {
+  if (profile?.activeRole?.roleType === 'platform_admin') {
     return <>{children}</>
-  } else if (profile.activeRole.roleType === 'agency_admin') {
+  } else if (profile?.activeRole?.roleType === 'agency_admin') {
     return <>{children}</>
-  } else if (profile.activeRole.roleType === 'agency_user') {
+  } else if (profile?.activeRole?.roleType === 'agency_user') {
     return <>{children}</>
   } else {
     return (

@@ -240,8 +240,8 @@ async function processAccountsData(supabase: any, stagingData: any[], job: any, 
         
         let personId: string | null = null
         
-                                   // Insert into persons table if SSN exists
-           if (mappedData.ssn && mappedData.ssn.trim() !== '') {
+                                                                                                           // Insert into persons table if SSN exists
+                                    if (mappedData.ssn && mappedData.ssn.trim() !== '') {
              try {
                // First try to find existing person by SSN
                const { data: existingPerson, error: findError } = await supabase

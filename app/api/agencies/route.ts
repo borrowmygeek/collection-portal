@@ -4,6 +4,9 @@ import { authenticateApiRequest } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
 import { logDataAccess, logDataModification, AUDIT_ACTIONS } from '@/lib/audit-log'
 
+// Force dynamic runtime for this API route
+export const dynamic = 'force-dynamic'
+
 // Create admin client for data operations
 const createAdminSupabaseClient = () => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL

@@ -10,7 +10,7 @@ export interface ImportJob {
   portfolio_id: string | null
   template_id: string | null
   user_id: string | null
-  status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
+  status: 'pending' | 'uploaded' | 'validating' | 'validated' | 'processing' | 'completed' | 'failed' | 'cancelled'
   progress: number | null
   total_rows: number | null
   processed_rows: number | null
@@ -18,6 +18,12 @@ export interface ImportJob {
   failed_rows: number | null
   errors: any | null
   failed_rows_csv_path: string | null
+  started_at: string | null
+  processing_completed_at: string | null
+  processing_errors: string[] | null
+  validation_results: any | null
+  validation_completed_at: string | null
+  uploaded_at: string | null
   created_at: string | null
   updated_at: string | null
   completed_at: string | null
@@ -35,7 +41,7 @@ export interface ImportJobCreate {
 }
 
 export interface ImportJobUpdate {
-  status?: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
+  status?: 'pending' | 'uploaded' | 'validating' | 'validated' | 'processing' | 'completed' | 'failed' | 'cancelled'
   progress?: number | null
   total_rows?: number | null
   processed_rows?: number | null
@@ -43,6 +49,12 @@ export interface ImportJobUpdate {
   failed_rows?: number | null
   errors?: any | null
   failed_rows_csv_path?: string | null
+  started_at?: string | null
+  processing_completed_at?: string | null
+  processing_errors?: string[] | null
+  validation_results?: any | null
+  validation_completed_at?: string | null
+  uploaded_at?: string | null
   completed_at?: string | null
 }
 

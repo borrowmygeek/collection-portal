@@ -111,11 +111,8 @@ export default function PortfolioModal({
       const url = isEditing ? `/api/portfolios/${portfolio!.id}` : '/api/portfolios'
       const method = isEditing ? 'PUT' : 'POST'
 
-      const response = await fetch(url, {
+      const response = await authenticatedFetch(url, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify(payload),
       })
 

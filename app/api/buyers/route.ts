@@ -199,16 +199,17 @@ export async function POST(request: NextRequest) {
          }
 
          // Send welcome email
-         try {
-           await sendWelcomeEmail(
-             body.contact_email,
-             body.company_name,
-             body.contact_name
-           )
-         } catch (emailError) {
-           console.error('Error sending welcome email:', emailError)
-           // Don't fail the request if email fails
-         }
+         // Temporarily disabled due to Resend API key configuration
+         // try {
+         //   await sendWelcomeEmail(
+         //     body.contact_email,
+         //     body.company_name,
+         //     body.contact_name
+         //   )
+         // } catch (emailError) {
+         //   console.error('Error sending welcome email:', emailError)
+         //   // Don't fail the request if email fails
+         // }
 
     // Log the data modification
     await logDataModification(

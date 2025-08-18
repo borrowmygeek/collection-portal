@@ -5,7 +5,6 @@ import { User, Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 
 // Version identifier to help with cache busting and debugging
-console.log('🔄 Auth Context v2.0 - Clean Implementation Loaded')
 
 interface UserProfile {
   id: string
@@ -60,8 +59,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Simple, clean profile fetch function
   const fetchUserProfile = async (userId: string): Promise<UserProfile | null> => {
     try {
-      console.log('🔍 Fetching user profile for:', userId)
-      
       // Get basic profile data
       const { data: profileData, error: profileError } = await supabase
         .from('platform_users')
@@ -73,8 +70,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.error('❌ Profile fetch error:', profileError)
         return null
       }
-
-      console.log('✅ Basic profile fetched:', profileData.id)
 
       // Get role session token from localStorage if available
       let roleSessionToken: string | null = null
@@ -133,7 +128,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         availableRoles
       }
 
-      console.log('✅ User profile loaded successfully')
       return userProfile
 
     } catch (error) {
@@ -148,8 +142,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const initializeAuth = async () => {
       try {
-        console.log('🔄 [AUTH v2.0] Initializing clean auth system...')
-        
         // Get initial session
         const { data: { session }, error } = await supabase.auth.getSession()
         
@@ -160,7 +152,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (session?.user) {
-          console.log('🔄 User session found:', session.user.email)
           setUser(session.user)
           setSession(session)
           
@@ -169,8 +160,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (mounted && userProfile) {
             setProfile(userProfile)
           }
-        } else {
-          console.log('🔄 No session found')
         }
       } catch (error) {
         console.error('❌ Auth initialization error:', error)
@@ -181,8 +170,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('🔄 Auth state change:', event, session?.user?.email)
-      
       if (!mounted) return
 
       if (event === 'SIGNED_IN' && session?.user) {
@@ -224,12 +211,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      console.log('🔄 Starting sign out process...')
-      
       // Clear role session token from localStorage
       if (typeof window !== 'undefined') {
         localStorage.removeItem('roleSessionToken')
-        console.log('✅ Cleared role session token from localStorage')
       }
       
       // Sign out from Supabase
@@ -239,15 +223,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw error
       }
       
-      console.log('✅ Successfully signed out from Supabase')
-      
       // Clear local state immediately
       setUser(null)
       setSession(null)
       setProfile(null)
       setLoading(false)
-      
-      console.log('✅ Cleared local auth state')
       
       // Redirect to login page
       if (typeof window !== 'undefined') {

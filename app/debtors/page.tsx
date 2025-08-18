@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useAuth } from '@/lib/auth-context'
 import { authenticatedFetch } from '@/lib/supabase'
 import { Sidebar } from '@/components/Sidebar'
@@ -142,7 +142,7 @@ interface DebtAccount {
   } | null
 }
 
-export default function DebtorsPage() {
+function DebtorsForm() {
   const { user } = useAuth()
   const searchParams = useSearchParams()
   const [debtAccounts, setDebtAccounts] = useState<DebtAccount[]>([])
@@ -238,29 +238,35 @@ export default function DebtorsPage() {
         <DashboardHeader title="Debt Accounts" />
         
         <div className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-7xl mx-auto">
+          <div className="space-y-6">
             {/* Search and Filters */}
-            <div className="bg-white rounded-lg shadow p-6 mb-6">
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-lg font-semibold mb-4">Search & Filters</h2>
+              
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="relative">
-                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Search
+                  </label>
                   <Input
                     type="text"
                     placeholder="Search by name, account, or creditor..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
+                    className="w-full"
                   />
                 </div>
-                
-                <div className="relative">
-                  <PhoneIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Phone Number
+                  </label>
                   <Input
                     type="text"
                     placeholder="Search by phone number..."
                     value={phoneSearch}
                     onChange={(e) => setPhoneSearch(e.target.value)}
-                    className="pl-10"
+                    className="w-full"
                   />
                 </div>
 
@@ -359,5 +365,20 @@ export default function DebtorsPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function DebtorsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen">
+        <Sidebar />
+        <div className="flex-1 flex items-center justify-center">
+          <p>Loading...</p>
+        </div>
+      </div>
+    }>
+      <DebtorsForm />
+    </Suspense>
   )
 } 

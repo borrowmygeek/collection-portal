@@ -11,7 +11,6 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 // Create client with anon key for normal operations (respects RLS)
 export function createSupabaseClient() {
   if (!supabaseInstance) {
-    console.log('🔧 Initializing Supabase client singleton...')
     supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         autoRefreshToken: true,
@@ -19,7 +18,6 @@ export function createSupabaseClient() {
         detectSessionInUrl: true
       }
     })
-    console.log('✅ Supabase client singleton created')
   }
   return supabaseInstance
 }
@@ -56,12 +54,6 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
   try {
     const session = await supabase.auth.getSession()
     
-    console.log('🔍 authenticatedFetch: Session check:', {
-      hasSession: !!session.data.session,
-      hasAccessToken: !!session.data.session?.access_token,
-      url: url
-    })
-    
     const headers: Record<string, string> = {
       ...(options.headers as Record<string, string> || {}),
     }
@@ -74,9 +66,6 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
     // Add authorization header if we have a session
     if (session.data.session?.access_token) {
       headers['Authorization'] = `Bearer ${session.data.session.access_token}`
-      console.log('✅ authenticatedFetch: Added Authorization header')
-    } else {
-      console.log('❌ authenticatedFetch: No access token available')
     }
 
     // Add role session token if available (for role switching)
@@ -84,7 +73,6 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
       const roleSessionToken = localStorage.getItem('roleSessionToken')
       if (roleSessionToken) {
         headers['x-role-session-token'] = roleSessionToken
-        console.log('✅ authenticatedFetch: Added role session token')
       }
     }
 
@@ -92,8 +80,6 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
       ...options,
       headers,
     })
-
-    console.log('🔍 authenticatedFetch: Response status:', response.status, 'for URL:', url)
     
     return response
   } catch (error) {

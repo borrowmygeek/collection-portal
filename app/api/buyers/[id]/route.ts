@@ -95,19 +95,20 @@ export async function PUT(
     }
 
     // Send status update email if status changed
-    if (body.status && buyer.status !== body.status) {
-      try {
-        await sendAccountStatusUpdateEmail(
-          buyer.contact_email,
-          buyer.company_name,
-          buyer.contact_name,
-          body.status
-        )
-      } catch (emailError) {
-        console.error('Error sending status update email:', emailError)
-        // Don't fail the request if email fails
-      }
-    }
+    // Temporarily disabled due to Resend API key configuration
+    // if (body.status && buyer.status !== body.status) {
+    //   try {
+    //     await sendAccountStatusUpdateEmail(
+    //       buyer.contact_email,
+    //       buyer.company_name,
+    //       buyer.contact_name,
+    //       body.status
+    //     )
+    //   } catch (emailError) {
+    //     console.error('Error sending status update email:', emailError)
+    //     // Don't fail the request if email fails
+    //   }
+    // }
 
     return NextResponse.json(buyer)
 

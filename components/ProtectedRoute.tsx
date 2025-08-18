@@ -15,12 +15,9 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   const router = useRouter()
   const [isRedirecting, setIsRedirecting] = useState(false)
 
-  console.log('🔒 ProtectedRoute: Loading auth state...', { user: !!user, profile: !!profile, loading })
-
   // Handle redirect to login using useEffect to avoid render-time redirects
   useEffect(() => {
     if (!loading && !user && !isRedirecting) {
-      console.log('🔒 ProtectedRoute: No user, redirecting to login')
       setIsRedirecting(true)
       router.replace('/auth/login')
     }
@@ -28,7 +25,6 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
 
   // Wait for authentication to be determined
   if (loading) {
-    console.log('🔒 ProtectedRoute: Still loading auth...')
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -54,7 +50,6 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   // If user is authenticated but profile is still loading, wait a bit longer
   // But only if we're not in a sign-out state (user exists)
   if (user && !profile) {
-    console.log('🔒 ProtectedRoute: User authenticated but profile not loaded yet...')
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -64,8 +59,6 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
       </div>
     )
   }
-
-  console.log('🔒 ProtectedRoute: Access granted')
 
   // Check user role and render appropriate content
   if (profile?.activeRole?.roleType === 'platform_admin') {

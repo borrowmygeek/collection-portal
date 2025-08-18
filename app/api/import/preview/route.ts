@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { authenticateApiRequest } from '@/lib/auth-utils'
 
 // Force dynamic runtime for this API route
@@ -99,7 +99,8 @@ export async function POST(request: NextRequest) {
     
     // Read and parse file
     console.log('🔍 Import preview: Reading file...')
-    const fileBuffer = Buffer.from(await file.arrayBuffer())
+    const arrayBuffer = await file.arrayBuffer()
+    const fileBuffer = Buffer.from(arrayBuffer)
     
     let rows: any[] = []
     let headers: string[] = []
@@ -122,14 +123,39 @@ export async function POST(request: NextRequest) {
       }
     } else {
       console.log('🔍 Import preview: Parsing Excel file...')
-      // Parse Excel file using xlsx library
+      // Parse Excel file using exceljs library
       try {
-        const workbook = XLSX.read(fileBuffer, { type: 'buffer' })
-        const sheetName = workbook.SheetNames[0]
-        const worksheet = workbook.Sheets[sheetName]
+        const workbook = new ExcelJS.Workbook()
+        await workbook.xlsx.load(arrayBuffer)
+        const worksheet = workbook.worksheets[0]
+        
+        if (!worksheet) {
+          return NextResponse.json({ error: 'No worksheet found in Excel file' }, { status: 400 })
+        }
         
         // Convert worksheet to JSON with headers
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
+        const jsonData: any[][] = []
+        const dimensions = worksheet.dimensions
+        
+        if (dimensions) {
+          // Read header row
+          const headerRow: any[] = []
+          for (let col = dimensions.left; col <= dimensions.right; col++) {
+            const cell = worksheet.getCell(dimensions.top, col)
+            headerRow.push(cell.value?.toString() || '')
+          }
+          jsonData.push(headerRow)
+          
+          // Read data rows
+          for (let row = dimensions.top + 1; row <= dimensions.bottom; row++) {
+            const dataRow: any[] = []
+            for (let col = dimensions.left; col <= dimensions.right; col++) {
+              const cell = worksheet.getCell(row, col)
+              dataRow.push(cell.value?.toString() || '')
+            }
+            jsonData.push(dataRow)
+          }
+        }
         
         if (jsonData.length > 0) {
           headers = jsonData[0].map(h => String(h || '').trim())
@@ -240,31 +266,6 @@ function parseCSVLine(line: string): string[] {
   result.push(current.trim())
   
   return result
-}
-
-function parseExcel(buffer: Buffer): any[] {
-  const workbook = XLSX.read(buffer, { type: 'buffer' })
-  const sheetName = workbook.SheetNames[0]
-  const worksheet = workbook.Sheets[sheetName]
-  
-  // Convert to JSON with headers
-  const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][]
-  
-  // Convert array format to object format (first row as headers)
-  if (rows.length > 0) {
-    const headers = rows[0] as string[]
-    const dataRows = rows.slice(1) as any[][]
-    
-    return dataRows.map(row => {
-      const obj: any = {}
-      headers.forEach((header, index) => {
-        obj[header] = row[index] || ''
-      })
-      return obj
-    })
-  }
-  
-  return []
 }
 
 function validateRows(rows: any[], importType: string, columnMapping: Record<string, string>): any[] {

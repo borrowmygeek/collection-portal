@@ -84,7 +84,8 @@ export async function POST(request: NextRequest) {
 
     // Send password reset email
     try {
-      await sendPasswordResetEmail(email, resetToken)
+              // Temporarily disabled due to Resend API key configuration
+        // await sendPasswordResetEmail(email, resetToken)
     } catch (emailError) {
       console.error('Error sending password reset email:', emailError)
       // Clean up the token if email fails

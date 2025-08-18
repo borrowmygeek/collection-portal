@@ -7,6 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { PlusIcon } from '@heroicons/react/24/outline'
 import PortfolioModal from './PortfolioModal'
+import { authenticatedFetch } from '@/lib/supabase'
 
 interface Portfolio {
   id: string
@@ -60,7 +61,7 @@ export default function PortfolioSelectionModal({
       const url = `/api/portfolios`
       
       console.log('Fetching portfolios from:', url)
-      const response = await fetch(url)
+      const response = await authenticatedFetch(url)
       const data = await response.json()
       
       console.log('Portfolio API response:', data)

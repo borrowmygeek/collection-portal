@@ -1,6 +1,7 @@
-import { Resend } from 'resend'
+// import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Temporarily disabled due to Resend API key configuration
+// const resend = new Resend(process.env.RESEND_API_KEY)
 
 export interface EmailData {
   to: string
@@ -10,25 +11,30 @@ export interface EmailData {
 }
 
 export const sendEmail = async (emailData: EmailData) => {
-  try {
-    const { data, error } = await resend.emails.send({
-      from: emailData.from || 'Collection Portal <noreply@collectionportal.com>',
-      to: emailData.to,
-      subject: emailData.subject,
-      html: emailData.html,
-    })
+  // Temporarily disabled due to Resend API key configuration
+  console.log('Email functionality temporarily disabled')
+  return { success: true, message: 'Email functionality temporarily disabled' }
+  
+  // try {
+  //   const { data, error } = await resend.emails.send({
+  //     from: emailData.from || 'Collection Portal <noreply@collectionportal.com>',
+  //     body: emailData.from || 'Collection Portal <noreply@collectionportal.com>',
+  //     to: emailData.to,
+  //     subject: emailData.subject,
+  //     html: emailData.html,
+  //   })
 
-    if (error) {
-      console.error('Email send error:', error)
-      throw new Error(`Failed to send email: ${error.message}`)
-    }
+  //   if (error) {
+  //     console.error('Email send error:', error)
+  //     throw new Error(`Failed to send email: ${error.message}`)
+  //   }
 
-    console.log('Email sent successfully:', data)
-    return data
-  } catch (error) {
-    console.error('Email send exception:', error)
-    throw error
-  }
+  //   console.log('Email sent successfully:', data)
+  //   return data
+  // } catch (error) {
+  //   console.error('Email send exception:', error)
+  //   throw error
+  // }
 }
 
 export const sendWelcomeEmail = async (email: string, companyName: string, contactName: string) => {

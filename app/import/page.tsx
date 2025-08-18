@@ -9,6 +9,7 @@ import DashboardHeader from '@/components/DashboardHeader'
 import PortfolioModal from '@/components/PortfolioModal'
 import FieldMappingModal from '@/components/FieldMappingModal'
 import DeletePortfolioConfirmDialog from '@/components/DeletePortfolioConfirmDialog'
+import ImportValidationResults from '@/components/ImportValidationResults'
 import { 
   CloudArrowUpIcon, 
   DocumentArrowUpIcon, 
@@ -18,7 +19,9 @@ import {
   ExclamationTriangleIcon,
   EyeIcon,
   TrashIcon,
-  PlusIcon
+  PlusIcon,
+  DocumentMagnifyingGlassIcon,
+  ArrowUpTrayIcon
 } from '@heroicons/react/24/outline'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -27,6 +30,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { toast } from 'react-toastify'
+import Link from 'next/link'
 
 interface Portfolio {
   id: string
@@ -78,6 +82,10 @@ export default function ImportPage() {
 
   // Auto-refresh state
   const [hasProcessingJobs, setHasProcessingJobs] = useState(false)
+  
+  // Validation state
+  const [validationResults, setValidationResults] = useState<any>(null)
+  const [isValidating, setIsValidating] = useState(false)
 
   useEffect(() => {
     fetchJobs()
@@ -88,12 +96,35 @@ export default function ImportPage() {
   // Auto-refresh effect for processing jobs
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null
+    let retryCount = 0
+    const maxRetries = 3
 
     if (hasProcessingJobs) {
       console.log('Starting auto-refresh for processing jobs')
+      
+      const pollJobs = async () => {
+        try {
+          await fetchJobs()
+          retryCount = 0 // Reset retry count on success
+        } catch (error) {
+          retryCount++
+          console.warn(`Polling attempt ${retryCount} failed:`, error)
+          
+          if (retryCount >= maxRetries) {
+            console.error('Max retries reached, stopping auto-refresh')
+            setHasProcessingJobs(false)
+            return
+          }
+        }
+      }
+
+      // Initial poll
+      pollJobs()
+      
+      // Set up interval with exponential backoff
       intervalId = setInterval(() => {
-        fetchJobs()
-      }, 3000) // Refresh every 3 seconds
+        pollJobs()
+      }, 10000) // Refresh every 10 seconds instead of 3
     }
 
     return () => {
@@ -104,24 +135,72 @@ export default function ImportPage() {
     }
   }, [hasProcessingJobs])
 
-  // Check for processing jobs whenever jobs state changes
+  // Check for active jobs whenever jobs state changes
   useEffect(() => {
-    const processingJobs = jobs.filter(job => job.status === 'processing')
-    const shouldRefresh = processingJobs.length > 0
+    const activeJobs = jobs.filter(job => 
+      job.status === 'processing' || job.status === 'pending' || job.status === 'validated'
+    )
+    const shouldRefresh = activeJobs.length > 0
     
     if (shouldRefresh !== hasProcessingJobs) {
-      console.log(`Processing jobs detected: ${processingJobs.length}, auto-refresh: ${shouldRefresh}`)
       setHasProcessingJobs(shouldRefresh)
     }
   }, [jobs, hasProcessingJobs])
 
+  // Poll for updates when validation is running
+  useEffect(() => {
+    const validatingJob = jobs.find(job => job.status === 'validating')
+    
+    if (validatingJob) {
+      const interval = setInterval(() => {
+        fetchJobs()
+      }, 2000) // Poll every 2 seconds during validation
+      
+      return () => clearInterval(interval)
+    }
+  }, [jobs])
+
+  // Auto-refresh jobs for active import jobs
+  useEffect(() => {
+    const activeJobs = jobs.filter(job => 
+      ['processing', 'pending', 'validating'].includes(job.status)
+    )
+    
+    if (activeJobs.length > 0) {
+      const interval = setInterval(() => {
+        fetchJobs()
+      }, 5000) // Poll every 5 seconds for active jobs
+      
+      return () => clearInterval(interval)
+    }
+  }, [jobs])
+
   const fetchJobs = async () => {
     try {
       const response = await authenticatedFetch('/api/import')
+      
+      // Handle rate limiting
+      if (response.status === 429) {
+        console.warn('Rate limited, will retry later')
+        throw new Error('Rate limited')
+      }
+      
+      // Handle authentication errors
+      if (response.status === 401 || response.status === 403) {
+        console.warn('Authentication error, stopping auto-refresh')
+        setHasProcessingJobs(false)
+        throw new Error('Authentication failed')
+      }
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      
       const data = await response.json()
       setJobs(data.jobs || [])
     } catch (error) {
       console.error('Error fetching jobs:', error)
+      throw error // Re-throw to let the polling logic handle it
     } finally {
       setLoading(false)
     }
@@ -407,9 +486,23 @@ export default function ImportPage() {
       // Add field mapping
       formData.append('field_mapping', JSON.stringify(fieldMapping))
 
+      console.log('🔍 [FRONTEND] About to call authenticatedFetch with:', {
+        url: '/api/import',
+        method: 'POST',
+        bodyType: formData instanceof FormData ? 'FormData' : typeof formData,
+        formDataEntries: Array.from(formData.entries()).map(([key, value]) => [key, typeof value])
+      })
+
       const response = await authenticatedFetch('/api/import', {
         method: 'POST',
         body: formData
+      })
+
+      console.log('🔍 [FRONTEND] authenticatedFetch response received:', {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers.entries())
       })
 
       if (response.ok) {
@@ -556,10 +649,107 @@ export default function ImportPage() {
     }
   }
 
+  // Validation functions
+  const handleValidate = async (jobId: string) => {
+    try {
+      setIsValidating(true)
+      console.log(`🔍 Starting validation for job: ${jobId}`)
+      
+      const response = await authenticatedFetch('/api/import/validate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ jobId })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Validation failed: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      console.log('✅ Validation completed:', data)
+      
+      setValidationResults(data.validationResults)
+      
+      // Refresh jobs to get updated validation status
+      await fetchJobs()
+      
+      toast.success(`Validation completed: ${data.validationResults.validRows} valid, ${data.validationResults.invalidRows} invalid rows`)
+      
+    } catch (error) {
+      console.error('❌ Validation failed:', error)
+      toast.error(`Validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsValidating(false)
+    }
+  }
+
+  const handleProcess = async (jobId: string) => {
+    try {
+      console.log(`🚀 Starting processing for job: ${jobId}`)
+      
+      // Find the job to show initial info
+      const job = jobs.find(j => j.id === jobId)
+      if (job) {
+        toast.info(`Processing started for ${job.file_name} (${job.import_type})...`, {
+          autoClose: false,
+          toastId: `processing-${jobId}`
+        })
+      }
+      
+      // Call the actual processing API
+      const response = await authenticatedFetch('/api/import/process', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ jobId }),
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Processing failed')
+      }
+      
+      const result = await response.json()
+      console.log('✅ Processing completed:', result)
+      
+      // Dismiss the processing toast
+      toast.dismiss(`processing-${jobId}`)
+      
+      if (result.errors && result.errors.length > 0) {
+        toast.warning(`Processing completed with ${result.errors.length} errors. ${result.processedCount} rows processed.`)
+      } else {
+        toast.success(`Processing completed successfully! ${result.processedCount} rows processed.`)
+      }
+      
+      // Refresh the import jobs to show updated status
+      fetchJobs()
+      
+    } catch (error) {
+      console.error('❌ Processing failed:', error)
+      
+      // Dismiss the processing toast on error
+      const job = jobs.find(j => j.id === jobId)
+      if (job) {
+        toast.dismiss(`processing-${jobId}`)
+      }
+      
+      toast.error(`Processing failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pending':
         return <ClockIcon className="h-5 w-5 text-yellow-500" />
+      case 'uploaded':
+        return <DocumentArrowUpIcon className="h-5 w-5 text-blue-500" />
+      case 'validating':
+        return <DocumentMagnifyingGlassIcon className="h-5 w-5 text-blue-500 animate-pulse" />
+      case 'validated':
+        return <CheckCircleIcon className="h-5 w-5 text-blue-600" />
       case 'processing':
         return <DocumentArrowUpIcon className="h-5 w-5 text-blue-500 animate-pulse" />
       case 'completed':
@@ -577,6 +767,12 @@ export default function ImportPage() {
     switch (status) {
       case 'pending':
         return 'bg-yellow-100 text-yellow-800'
+      case 'uploaded':
+        return 'bg-blue-100 text-blue-800'
+      case 'validating':
+        return 'bg-blue-100 text-blue-800'
+      case 'validated':
+        return 'bg-blue-100 text-blue-800'
       case 'processing':
         return 'bg-blue-100 text-blue-800'
       case 'completed':
@@ -617,6 +813,19 @@ export default function ImportPage() {
           
           <main className="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-6">
             <div className="max-w-7xl mx-auto">
+              {/* Admin Link for Platform Admins */}
+              {isPlatformAdmin && (
+                <div className="mb-4 flex justify-end">
+                  <Link
+                    href="/admin/imports"
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-700 bg-blue-100 border border-blue-300 rounded-md hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    <ArrowUpTrayIcon className="h-4 w-4 mr-2" />
+                    Manage Imports
+                  </Link>
+                </div>
+              )}
+              
               {/* Upload Section */}
               <div className="bg-white rounded-lg shadow p-6 mb-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Upload File</h2>
@@ -867,6 +1076,58 @@ export default function ImportPage() {
                         Refresh
                       </button>
                     </div>
+                    
+                    {/* Real-time processing status */}
+                    {(() => {
+                      const activeJobs = jobs.filter(job => job.status === 'processing' || job.status === 'validated')
+                      if (activeJobs.length > 0) {
+                        return (
+                          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+                            <div className="flex items-center space-x-2 mb-2">
+                              <DocumentArrowUpIcon className="h-5 w-5 text-blue-600 animate-pulse" />
+                              <h3 className="font-medium text-blue-900">Active Import Jobs</h3>
+                            </div>
+                            <div className="space-y-2">
+                              {activeJobs.map(job => (
+                                <div key={job.id} className="flex items-center justify-between">
+                                  <div className="flex items-center space-x-2">
+                                    <span className="text-sm font-medium text-blue-900">{job.file_name}</span>
+                                    <span className="text-xs text-blue-600">({job.import_type})</span>
+                                  </div>
+                                  <div className="flex items-center space-x-4">
+                                    <div className="flex items-center space-x-2">
+                                      <span className="text-sm text-blue-700">Progress:</span>
+                                      <span className="text-sm font-medium text-blue-900">{job.progress || 0}%</span>
+                                    </div>
+                                    {job.status === 'processing' && job.processed_rows && job.total_rows && (
+                                      <div className="text-sm text-blue-700">
+                                        {job.processed_rows} / {job.total_rows} rows
+                                      </div>
+                                    )}
+                                    {job.status === 'validated' && job.validation_results && (
+                                      <div className="text-sm text-blue-700">
+                                        {job.validation_results.validRows} valid rows ready
+                                      </div>
+                                    )}
+                                    {job.status === 'processing' && job.started_at && (
+                                      <div className="text-xs text-blue-600">
+                                        Started: {new Date(job.started_at).toLocaleTimeString()}
+                                      </div>
+                                    )}
+                                    {job.status === 'validated' && job.validation_completed_at && (
+                                      <div className="text-xs text-blue-600">
+                                        Validated: {new Date(job.validation_completed_at).toLocaleTimeString()}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      }
+                      return null
+                    })()}
                   </div>
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
@@ -910,21 +1171,76 @@ export default function ImportPage() {
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
-                                {getStatusIcon(job.status)}
-                                <span className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(job.status)}`}>
-                                  {job.status}
-                                </span>
+                              <div className="flex flex-col space-y-1">
+                                <div className="flex items-center">
+                                  {getStatusIcon(job.status)}
+                                  <span className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(job.status)}`}>
+                                    {job.status}
+                                  </span>
+                                </div>
+                                {job.status === 'processing' && job.started_at && (
+                                  <div className="text-xs text-gray-500">
+                                    Started: {new Date(job.started_at).toLocaleTimeString()}
+                                  </div>
+                                )}
+                                {job.status === 'completed' && job.processing_completed_at && (
+                                  <div className="text-xs text-gray-500">
+                                    Completed: {new Date(job.processing_completed_at).toLocaleTimeString()}
+                                  </div>
+                                )}
                               </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {job.progress || 0}%
+                              <div className="flex flex-col space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-medium">{job.progress || 0}%</span>
+                                  {job.status === 'processing' && (
+                                    <span className="text-xs text-blue-600 animate-pulse">Processing...</span>
+                                  )}
+                                  {job.status === 'validated' && (
+                                    <span className="text-xs text-blue-600">Ready to Process</span>
+                                  )}
+                                </div>
+                                {(job.status === 'processing' || job.status === 'validated') && (
+                                  <div className="w-full bg-gray-200 rounded-full h-2">
+                                    <div 
+                                      className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                                      style={{ width: `${job.progress || 0}%` }}
+                                    ></div>
+                                  </div>
+                                )}
+                                {job.processed_rows && job.total_rows && (
+                                  <div className="text-xs text-gray-500">
+                                    {job.processed_rows} / {job.total_rows} rows
+                                  </div>
+                                )}
+                                {job.status === 'validated' && job.validation_results && (
+                                  <div className="text-xs text-gray-500">
+                                    {job.validation_results.validRows} valid rows ready
+                                  </div>
+                                )}
+                              </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {job.successful_rows || 0} / {job.total_rows || 0}
-                              {job.failed_rows && job.failed_rows > 0 && (
-                                <span className="text-red-600 ml-2">({job.failed_rows} failed)</span>
-                              )}
+                              {job.status === 'completed' ? (
+                                <>
+                                  {job.processed_rows || 0} / {job.total_rows || 0}
+                                  {job.processing_errors && job.processing_errors.length > 0 && (
+                                    <span className="text-red-600 ml-2">({job.processing_errors.length} errors)</span>
+                                  )}
+                                </>
+                              ) : job.status === 'validated' ? (
+                                <>
+                                  {job.validation_results?.validRows || 0} valid rows
+                                  {job.validation_results?.invalidRows > 0 && (
+                                    <span className="text-red-600 ml-2">({job.validation_results.invalidRows} invalid)</span>
+                                  )}
+                                </>
+              ) : job.status === 'uploaded' ? (
+                'Ready for validation'
+              ) : (
+                'Pending'
+              )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {job.created_at ? new Date(job.created_at).toLocaleString() : 'N/A'}
@@ -978,6 +1294,39 @@ export default function ImportPage() {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              )}
+
+              {/* Validation Section */}
+              {jobs.length > 0 && (
+                <div className="bg-white rounded-lg shadow p-6 mb-6">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Data Validation</h2>
+                  
+                  {/* Show validation for the most recent uploaded, validating, or validated job */}
+                  {(() => {
+                    const latestValidationJob = jobs
+                      .filter(job => (job.status === 'uploaded' || job.status === 'validating' || job.status === 'validated') && job.created_at)
+                      .sort((a, b) => new Date(b.created_at!).getTime() - new Date(a.created_at!).getTime())[0]
+                    
+                    if (latestValidationJob) {
+                      return (
+                        <ImportValidationResults
+                          jobId={latestValidationJob.id}
+                          validationResults={validationResults}
+                          onValidate={handleValidate}
+                          onProcess={handleProcess}
+                          jobStatus={latestValidationJob.status}
+                          jobProgress={latestValidationJob.progress}
+                        />
+                      )
+                    }
+                    
+                    return (
+                      <div className="text-center py-8 text-gray-500">
+                        <p>Upload a file to enable data validation</p>
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
             </div>

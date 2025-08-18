@@ -99,3 +99,4 @@ temp/
 # Generated files
 current_schema_analysis.json
 schema_deep_dive_analysis.json
+.vercel

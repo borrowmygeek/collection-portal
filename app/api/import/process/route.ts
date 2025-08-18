@@ -287,8 +287,8 @@ async function processAccountsData(supabase: any, stagingData: any[], job: any, 
                  personId = personData.id
                  console.log(`✅ [PROCESS] New person created: ${personId}`)
                }
-            
-            // Insert address information into person_addresses table if available
+               
+               // Insert address information into person_addresses table if available
             if (mappedData.address_line1 || mappedData.city || mappedData.state) {
               const { error: addressError } = await supabase
                 .from('person_addresses')

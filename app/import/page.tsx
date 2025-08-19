@@ -698,30 +698,71 @@ export default function ImportPage() {
         })
       }
       
-      // Call the actual processing API
-      const response = await authenticatedFetch('/api/import/process', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ jobId }),
-      })
+      // Process data in chunks to avoid Vercel timeout
+      let startIndex = 0
+      const chunkSize = 100
+      let totalProcessed = 0
+      let allErrors: string[] = []
+      let isCompleted = false
       
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Processing failed')
+      while (!isCompleted) {
+        console.log(`📊 Processing chunk: ${startIndex + 1}-${startIndex + chunkSize}`)
+        
+        // Call the processing API with chunk parameters
+        const response = await authenticatedFetch('/api/import/process', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            jobId, 
+            chunkSize, 
+            startIndex 
+          }),
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || 'Processing failed')
+        }
+        
+        const result = await response.json()
+        console.log(`📊 Chunk completed:`, result)
+        
+        // Accumulate results
+        totalProcessed += result.processedCount || 0
+        if (result.errors && result.errors.length > 0) {
+          allErrors = allErrors.concat(result.errors)
+        }
+        
+        // Update progress toast
+        if (job) {
+          toast.info(`Processing ${job.file_name}: ${result.progress || 0}% complete (${totalProcessed} rows processed)`, {
+            autoClose: false,
+            toastId: `processing-${jobId}`
+          })
+        }
+        
+        // Check if processing is complete
+        if (result.completed) {
+          isCompleted = true
+          console.log('✅ Processing completed:', result)
+        } else {
+          // Move to next chunk
+          startIndex = result.nextStartIndex || (startIndex + chunkSize)
+          
+          // Small delay between chunks to avoid overwhelming the system
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
       }
-      
-      const result = await response.json()
-      console.log('✅ Processing completed:', result)
       
       // Dismiss the processing toast
       toast.dismiss(`processing-${jobId}`)
       
-      if (result.errors && result.errors.length > 0) {
-        toast.warning(`Processing completed with ${result.errors.length} errors. ${result.processedCount} rows processed.`)
+      if (allErrors.length > 0) {
+        toast.warning(`Processing completed with ${allErrors.length} errors. ${totalProcessed} rows processed.`)
       } else {
-        toast.success(`Processing completed successfully! ${result.processedCount} rows processed.`)
+        toast.success(`Processing completed successfully! ${totalProcessed} rows processed.`)
       }
       
       // Refresh the import jobs to show updated status

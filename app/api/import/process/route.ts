@@ -3,29 +3,21 @@ import { createClient } from '@supabase/supabase-js'
 import { authenticateApiRequest } from '@/lib/auth-utils'
 
 export async function POST(request: NextRequest) {
-  let processingTimeout: NodeJS.Timeout | null = null
-  
   try {
     console.log('🚀 [PROCESS] Starting data processing...')
-    
-    // Set a timeout for the entire processing operation (30 minutes)
-    processingTimeout = setTimeout(() => {
-      console.error('⏰ [PROCESS] Processing timeout reached (30 minutes)')
-    }, 30 * 60 * 1000)
     
     // Authenticate the request
     const { user, error: authError } = await authenticateApiRequest(request)
     if (authError || !user) {
-      if (processingTimeout) clearTimeout(processingTimeout)
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     
-    const { jobId } = await request.json()
+    const { jobId, chunkSize = 100, startIndex = 0 } = await request.json()
     if (!jobId) {
       return NextResponse.json({ error: 'Job ID is required' }, { status: 400 })
     }
     
-    console.log(`🚀 [PROCESS] Processing job: ${jobId}`)
+    console.log(`🚀 [PROCESS] Processing job: ${jobId}, chunk: ${startIndex + 1}-${startIndex + chunkSize}`)
     
     // Get Supabase client
     const supabase = createClient(
@@ -105,104 +97,126 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No validation results found. Please run validation first.' }, { status: 400 })
     }
     
-    // Debug: Log the validation results received
-    console.log(`🔍 [PROCESS] Validation results received:`, {
-      totalRows: validationResults.totalRows,
-      validRows: validationResults.validRows,
-      invalidRows: validationResults.invalidRows,
-      errorsCount: validationResults.errors?.length || 0,
-      warningsCount: validationResults.warnings?.length || 0,
-      rowDetailsCount: validationResults.rowDetails?.length || 0,
-      sampleRowDetail: validationResults.rowDetails?.[0],
-      hasRowDetails: !!validationResults.rowDetails,
-      validationResultsKeys: Object.keys(validationResults)
-    })
-    
-    console.log(`🚀 [PROCESS] Processing ${validationResults.validRows} valid rows...`)
-    
-    // Get valid rows from staging data with pagination to handle large datasets
+    // Get valid rows from staging data
     const validRowNumbers = validationResults.rowDetails
       .filter((row: any) => row.isValid)
       .map((row: any) => row.rowNumber)
     
-    console.log(`📊 [PROCESS] Total valid rows to process: ${validRowNumbers.length}`)
+    console.log(`📊 [PROCESS] Total valid rows: ${validRowNumbers.length}, processing chunk ${startIndex + 1}-${Math.min(startIndex + chunkSize, validRowNumbers.length)}`)
     
-    // Fetch all valid staging data in batches to avoid Supabase's 1000 row limit
-    let allValidStagingData: any[] = []
-    const batchSize = 1000
+    // Process only the current chunk
+    const chunkRowNumbers = validRowNumbers.slice(startIndex, startIndex + chunkSize)
     
-    for (let offset = 0; offset < validRowNumbers.length; offset += batchSize) {
-      const batchRowNumbers = validRowNumbers.slice(offset, offset + batchSize)
-      console.log(`📊 [PROCESS] Fetching batch ${Math.floor(offset / batchSize) + 1}: rows ${offset + 1} to ${Math.min(offset + batchSize, validRowNumbers.length)}`)
-      
-      const { data: batchData, error: batchError } = await supabase
-        .from('import_staging_data')
-        .select('*')
-        .eq('job_id', jobId)
-        .in('row_number', batchRowNumbers)
-        .order('row_number')
-      
-      if (batchError) {
-        console.error(`[PROCESS] Error fetching batch ${Math.floor(offset / batchSize) + 1}:`, batchError)
-        return NextResponse.json({ error: 'Failed to fetch valid staging data' }, { status: 500 })
-      }
-      
-      if (batchData) {
-        allValidStagingData = allValidStagingData.concat(batchData)
-        console.log(`✅ [PROCESS] Batch ${Math.floor(offset / batchSize) + 1} fetched: ${batchData.length} rows`)
-      }
+    if (chunkRowNumbers.length === 0) {
+      return NextResponse.json({ 
+        success: true, 
+        message: 'No more rows to process',
+        completed: true,
+        processedCount: 0,
+        errors: []
+      })
     }
     
-    const validStagingData = allValidStagingData
+    // Fetch staging data for this chunk
+    const { data: chunkStagingData, error: chunkError } = await supabase
+      .from('import_staging_data')
+      .select('*')
+      .eq('job_id', jobId)
+      .in('row_number', chunkRowNumbers)
+      .order('row_number')
     
-    if (!validStagingData || validStagingData.length === 0) {
-      return NextResponse.json({ error: 'No valid data found to process' }, { status: 404 })
+    if (chunkError) {
+      console.error('[PROCESS] Error fetching chunk staging data:', chunkError)
+      return NextResponse.json({ error: 'Failed to fetch chunk staging data' }, { status: 500 })
     }
     
-    console.log(`🚀 [PROCESS] Found ${validStagingData.length} valid rows to process`)
+    if (!chunkStagingData || chunkStagingData.length === 0) {
+      return NextResponse.json({ error: 'No staging data found for chunk' }, { status: 404 })
+    }
     
-    // Process the data based on import type
+    // Update job status to processing if this is the first chunk
+    if (startIndex === 0) {
+      await supabase
+        .from('import_jobs')
+        .update({
+          status: 'processing',
+          started_at: new Date().toISOString(),
+          progress: 0,
+          processed_rows: 0,
+          total_rows: validRowNumbers.length,
+          processing_errors: null
+        })
+        .eq('id', jobId)
+    }
+    
+    // Process the chunk
     let processedCount = 0
     let errors: string[] = []
     
     if (job.import_type === 'accounts') {
-      const result = await processAccountsData(supabase, validStagingData, job, validRowNumbers.length, clientId)
+      const result = await processAccountsDataChunk(supabase, chunkStagingData, job, clientId)
       processedCount = result.processedCount
       errors = result.errors
     } else {
       return NextResponse.json({ error: `Import type '${job.import_type}' is not supported yet` }, { status: 400 })
     }
     
-    // Update job status to completed
+    // Calculate overall progress
+    const totalProcessed = (job.processed_rows || 0) + processedCount
+    const progress = Math.round((totalProcessed / validRowNumbers.length) * 100)
+    
+    // Update job progress
     await supabase
       .from('import_jobs')
       .update({
-        status: 'completed',
-        processing_completed_at: new Date().toISOString(),
-        progress: 100,
-        processed_rows: processedCount,
+        processed_rows: totalProcessed,
+        progress: progress,
         processing_errors: errors.length > 0 ? errors : null
       })
       .eq('id', jobId)
     
-    console.log(`✅ [PROCESS] Processing completed for job ${jobId}`)
-    console.log(`📊 [PROCESS] Results: ${processedCount} rows processed, ${errors.length} errors`)
+    // Check if this was the last chunk
+    const isLastChunk = startIndex + chunkSize >= validRowNumbers.length
+    const nextStartIndex = startIndex + chunkSize
     
-    // Clear the timeout since processing completed successfully
-    if (processingTimeout) clearTimeout(processingTimeout)
-    
-    return NextResponse.json({
-      success: true,
-      processedCount,
-      errors,
-      message: `Processing completed: ${processedCount} rows processed${errors.length > 0 ? `, ${errors.length} errors` : ''}`
-    })
+    if (isLastChunk) {
+      // Mark job as completed
+      await supabase
+        .from('import_jobs')
+        .update({
+          status: 'completed',
+          processing_completed_at: new Date().toISOString(),
+          progress: 100
+        })
+        .eq('id', jobId)
+      
+      console.log(`✅ [PROCESS] Processing completed for job ${jobId}`)
+      
+      return NextResponse.json({
+        success: true,
+        processedCount,
+        errors,
+        completed: true,
+        message: `Processing completed: ${totalProcessed} rows processed${errors.length > 0 ? `, ${errors.length} errors` : ''}`
+      })
+    } else {
+      // Return progress and indicate more chunks to process
+      console.log(`📊 [PROCESS] Chunk completed: ${processedCount} rows processed, progress: ${progress}%`)
+      
+      return NextResponse.json({
+        success: true,
+        processedCount,
+        errors,
+        completed: false,
+        nextStartIndex,
+        progress,
+        totalProcessed,
+        message: `Chunk processed: ${processedCount} rows, overall progress: ${progress}%`
+      })
+    }
     
   } catch (error) {
     console.error('[PROCESS] Processing failed:', error)
-    
-    // Clear the timeout since processing failed
-    if (processingTimeout) clearTimeout(processingTimeout)
     
     return NextResponse.json({ 
       error: 'Processing failed', 
@@ -211,27 +225,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function processAccountsData(supabase: any, stagingData: any[], job: any, totalRows: number, clientId: string) {
+async function processAccountsDataChunk(supabase: any, stagingData: any[], job: any, clientId: string) {
   let processedCount = 0
   const errors: string[] = []
-  const startTime = new Date()
   
   try {
-    console.log('🚀 [PROCESS] Processing accounts data...')
-    console.log(`🚀 [PROCESS] Processing ${stagingData.length} account rows`)
-    
-    // Update job status to show processing has started
-    await supabase
-      .from('import_jobs')
-      .update({
-        status: 'processing',
-        started_at: new Date().toISOString(),
-        progress: 0,
-        processed_rows: 0,
-        total_rows: totalRows,
-        processing_errors: null
-      })
-      .eq('id', job.id)
+    console.log(`🚀 [PROCESS] Processing chunk: ${stagingData.length} account rows`)
     
     for (const row of stagingData) {
       try {
@@ -412,21 +411,6 @@ async function processAccountsData(supabase: any, stagingData: any[], job: any, 
           processedCount++
         }
         
-        // Update progress every 5 rows or on the last row for more frequent updates
-        if (processedCount % 5 === 0 || processedCount === stagingData.length) {
-          const progress = Math.round((processedCount / stagingData.length) * 100)
-          await supabase
-            .from('import_jobs')
-            .update({
-              progress: progress,
-              processed_rows: processedCount,
-              processing_errors: errors.length > 0 ? errors : null
-            })
-            .eq('id', job.id)
-          
-          console.log(`📊 [PROCESS] Progress: ${progress}% (${processedCount}/${stagingData.length} rows)`)
-        }
-        
       } catch (rowError) {
         console.error(`[PROCESS] Unexpected error processing row ${row.row_number}:`, rowError)
         errors.push(`Row ${row.row_number}: Unexpected error - ${rowError instanceof Error ? rowError.message : 'Unknown error'}`)
@@ -434,43 +418,12 @@ async function processAccountsData(supabase: any, stagingData: any[], job: any, 
       }
     }
     
-    const endTime = new Date()
-    const processingTimeSeconds = (endTime.getTime() - startTime.getTime()) / 1000
-    const rowsPerSecond = processingTimeSeconds > 0 ? processedCount / processingTimeSeconds : 0
-    const successRate = stagingData.length > 0 ? (processedCount / stagingData.length) * 100 : 0
-    
-    console.log(`✅ [PROCESS] Processing completed: ${processedCount} rows processed, ${errors.length} errors`)
-    console.log(`📊 [PROCESS] Performance: ${processingTimeSeconds.toFixed(2)}s, ${rowsPerSecond.toFixed(2)} rows/s, ${successRate.toFixed(1)}% success rate`)
-    
-    // Insert performance metrics
-    try {
-      const { error: metricsError } = await supabase
-        .from('import_performance_metrics')
-        .insert({
-          job_id: job.id,
-          total_rows: stagingData.length,
-          successful_rows: processedCount,
-          failed_rows: errors.length,
-          processing_time_seconds: processingTimeSeconds,
-          rows_per_second: rowsPerSecond,
-          success_rate: successRate,
-          start_time: startTime.toISOString(),
-          end_time: endTime.toISOString()
-        })
-      
-      if (metricsError) {
-        console.error('[PROCESS] Error inserting performance metrics:', metricsError)
-      } else {
-        console.log('✅ [PROCESS] Performance metrics recorded')
-      }
-    } catch (metricsError) {
-      console.error('[PROCESS] Error recording performance metrics:', metricsError)
-    }
+    console.log(`✅ [PROCESS] Chunk completed: ${processedCount} rows processed, ${errors.length} errors`)
     
     return { processedCount, errors }
     
   } catch (error) {
-    console.error('[PROCESS] Error processing accounts data:', error)
+    console.error('[PROCESS] Error processing accounts data chunk:', error)
     errors.push(`Processing error: ${error instanceof Error ? error.message : 'Unknown error'}`)
     return { processedCount: 0, errors }
   }

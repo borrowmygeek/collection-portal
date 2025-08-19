@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     
     console.log(`📊 [ADMIN] Found ${personsCount} persons, ${debtAccountsCount} debt accounts, ${stagingDataCount} staging rows`)
     
-    if (personsCount === 0 && debtAccountsCount === 0 && stagingDataCount === 0) {
+    if ((!personsCount || personsCount === 0) && (!debtAccountsCount || debtAccountsCount === 0) && (!stagingDataCount || stagingDataCount === 0)) {
       return NextResponse.json({ 
         success: true, 
         message: 'No data to clear! All tables are already empty.',
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Clear import staging data
-    if (stagingDataCount > 0) {
+    if (stagingDataCount && stagingDataCount > 0) {
       console.log('🗑️ [ADMIN] Clearing import staging data...')
       const { error: stagingError } = await supabase
         .from('import_staging_data')
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Clear debt_accounts (references persons)
-    if (debtAccountsCount > 0) {
+    if (debtAccountsCount && debtAccountsCount > 0) {
       console.log('🗑️ [ADMIN] Clearing debt_accounts table...')
       const { error: debtAccountsError } = await supabase
         .from('debt_accounts')
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
     }
     
     // Finally clear persons table (now that all references are gone)
-    if (personsCount > 0) {
+    if (personsCount && personsCount > 0) {
       console.log('🗑️ [ADMIN] Clearing persons table...')
       const { error: personsError } = await supabase
         .from('persons')

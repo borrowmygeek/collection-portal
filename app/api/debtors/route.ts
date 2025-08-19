@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
           first_name,
           last_name,
           ssn,
-          person_phones(
+          person_phones!person_phones_person_id_fkey(
             id,
             number,
             phone_type,
@@ -93,13 +93,15 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0')
 
     if (search) {
-      query = query.or(`full_name.ilike.%${search}%,account_number.ilike.%${search}%,original_creditor_name.ilike.%${search}%`)
+      // Search in debt_accounts fields
+      query = query.or(`account_number.ilike.%${search}%,original_creditor_name.ilike.%${search}%`)
     }
 
     if (phoneSearch) {
-      // Simple phone search - just look for the phone number in the persons.phone_numbers
+      // Phone search needs to be handled separately since it's in a joined table
+      // We'll handle this after the main query by filtering results
       const normalizedPhone = phoneSearch.replace(/\D/g, '')
-      query = query.or(`persons.person_phones.number.ilike.%${normalizedPhone}%`)
+      // Store the phone search for later filtering
     }
 
     if (portfolioId) {
@@ -119,6 +121,22 @@ export async function GET(request: NextRequest) {
       query = query.eq('master_portfolios.agency_id', user.activeRole.organizationId)
     }
 
+    // Handle person name search if search term is provided
+    if (search) {
+      // First, get person IDs that match the search term
+      const { data: matchingPersons, error: personSearchError } = await supabase
+        .from('persons')
+        .select('id')
+        .or(`full_name.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%`)
+        .limit(100) // Limit to prevent performance issues
+      
+      if (!personSearchError && matchingPersons && matchingPersons.length > 0) {
+        const personIds = matchingPersons.map(p => p.id)
+        // Add person ID filter to the main query
+        query = query.in('person_id', personIds)
+      }
+    }
+
     // Get total count for pagination
     const { count } = await query
 
@@ -134,6 +152,19 @@ export async function GET(request: NextRequest) {
         { error: 'Failed to fetch debt accounts' },
         { status: 500 }
       )
+    }
+
+    // Apply phone search filtering if needed
+    let filteredDebtAccounts = debtAccounts
+    if (phoneSearch && debtAccounts) {
+      const normalizedPhone = phoneSearch.replace(/\D/g, '')
+      filteredDebtAccounts = debtAccounts.filter(debtAccount => {
+        // Check if any phone number in the person's phones matches
+        const personPhones = debtAccount.persons?.person_phones || []
+        return personPhones.some(phone => 
+          phone.number && phone.number.replace(/\D/g, '').includes(normalizedPhone)
+        )
+      })
     }
 
     // Log data access
@@ -154,12 +185,16 @@ export async function GET(request: NextRequest) {
       request
     )
 
+    // Use filtered results if phone search was applied
+    const finalDebtAccounts = filteredDebtAccounts || debtAccounts
+    const finalCount = finalDebtAccounts?.length || 0
+
     return NextResponse.json({
       success: true,
       data: {
-        count: debtAccounts?.length || 0, 
+        count: finalCount, 
         total: count || 0,
-        debtAccounts: debtAccounts || [],
+        debtAccounts: finalDebtAccounts || [],
         pagination: {
           limit,
           offset,

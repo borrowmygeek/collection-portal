@@ -33,71 +33,71 @@ export async function POST(request: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
     
-         // Get the import job details
-     const { data: job, error: jobError } = await supabase
-       .from('import_jobs')
-       .select('*')
-       .eq('id', jobId)
-       .single()
-     
-     if (jobError || !job) {
-       console.error('[PROCESS] Error fetching job:', jobError)
-       return NextResponse.json({ error: 'Import job not found' }, { status: 404 })
-     }
-     
-     // Get portfolio details to get client_id
-     let portfolio = null
-     let clientId = null
-     
-     if (job.portfolio_id) {
-       const { data: portfolioData, error: portfolioError } = await supabase
-         .from('master_portfolios')
-         .select('*, master_clients!inner(*)')
-         .eq('id', job.portfolio_id)
-         .single()
-       
-       if (portfolioError) {
-         console.error('[PROCESS] Error fetching portfolio:', portfolioError)
-         return NextResponse.json({ error: 'Portfolio not found' }, { status: 404 })
-       }
-       
-       portfolio = portfolioData
-       clientId = portfolioData.master_clients.id
-       console.log(`📊 [PROCESS] Found portfolio: ${portfolioData.name}, client: ${portfolioData.master_clients.name}`)
-     } else {
-       console.warn('[PROCESS] No portfolio_id found in job, will use default client')
-       // Create a default client if none exists
-       const { data: existingClient } = await supabase
-         .from('master_clients')
-         .select('id')
-         .limit(1)
-         .single()
-       
-       if (existingClient) {
-         clientId = existingClient.id
-         console.log(`📊 [PROCESS] Using existing client: ${existingClient.id}`)
-       } else {
-         // Create a default client
-         const { data: newClient, error: clientError } = await supabase
-           .from('master_clients')
-           .insert({
-             name: 'Default Import Client',
-             code: 'DEFAULT_IMPORT',
-             client_type: 'debt_buyer',
-             status: 'active'
-           })
-           .select('id')
-           .single()
-         
-         if (clientError) {
-           console.error('[PROCESS] Error creating default client:', clientError)
-           return NextResponse.json({ error: 'Failed to create default client' }, { status: 500 })
-         }
-         
-         clientId = newClient.id
-         console.log(`📊 [PROCESS] Created default client: ${newClient.id}`)
-       }
-     }
+    // Get the import job details
+    const { data: job, error: jobError } = await supabase
+      .from('import_jobs')
+      .select('*')
+      .eq('id', jobId)
+      .single()
+    
+    if (jobError || !job) {
+      console.error('[PROCESS] Error fetching job:', jobError)
+      return NextResponse.json({ error: 'Import job not found' }, { status: 404 })
+    }
+    
+    // Get portfolio details to get client_id
+    let portfolio = null
+    let clientId = null
+    
+    if (job.portfolio_id) {
+      const { data: portfolioData, error: portfolioError } = await supabase
+        .from('master_portfolios')
+        .select('*, master_clients!inner(*)')
+        .eq('id', job.portfolio_id)
+        .single()
+      
+      if (portfolioError) {
+        console.error('[PROCESS] Error fetching portfolio:', portfolioError)
+        return NextResponse.json({ error: 'Portfolio not found' }, { status: 404 })
+      }
+      
+      portfolio = portfolioData
+      clientId = portfolioData.master_clients.id
+      console.log(`📊 [PROCESS] Found portfolio: ${portfolioData.name}, client: ${portfolioData.master_clients.name}`)
+    } else {
+      console.warn('[PROCESS] No portfolio_id found in job, will use default client')
+      // Create a default client if none exists
+      const { data: existingClient } = await supabase
+        .from('master_clients')
+        .select('id')
+        .limit(1)
+        .single()
+      
+      if (existingClient) {
+        clientId = existingClient.id
+        console.log(`📊 [PROCESS] Using existing client: ${existingClient.id}`)
+      } else {
+        // Create a default client
+        const { data: newClient, error: clientError } = await supabase
+          .from('master_clients')
+          .insert({
+            name: 'Default Import Client',
+            code: 'DEFAULT_IMPORT',
+            client_type: 'debt_buyer',
+            status: 'active'
+          })
+          .select('id')
+          .single()
+        
+        if (clientError) {
+          console.error('[PROCESS] Error creating default client:', clientError)
+          return NextResponse.json({ error: 'Failed to create default client' }, { status: 500 })
+        }
+        
+        clientId = newClient.id
+        console.log(`📊 [PROCESS] Created default client: ${newClient.id}`)
+      }
+    }
     
     // Get validation results to determine which rows to process
     const validationResults = job.validation_results
@@ -161,29 +161,29 @@ export async function POST(request: NextRequest) {
     
     console.log(`🚀 [PROCESS] Found ${validStagingData.length} valid rows to process`)
     
-        // Process the data based on import type
+    // Process the data based on import type
     let processedCount = 0
     let errors: string[] = []
     
-         if (job.import_type === 'accounts') {
-        const result = await processAccountsData(supabase, validStagingData, job, validRowNumbers.length, clientId)
-        processedCount = result.processedCount
-        errors = result.errors
-      } else {
-        return NextResponse.json({ error: `Import type '${job.import_type}' is not supported yet` }, { status: 400 })
-      }
+    if (job.import_type === 'accounts') {
+      const result = await processAccountsData(supabase, validStagingData, job, validRowNumbers.length, clientId)
+      processedCount = result.processedCount
+      errors = result.errors
+    } else {
+      return NextResponse.json({ error: `Import type '${job.import_type}' is not supported yet` }, { status: 400 })
+    }
     
-         // Update job status to completed
-     await supabase
-       .from('import_jobs')
-       .update({
-         status: 'completed',
-         processing_completed_at: new Date().toISOString(),
-         progress: 100,
-         processed_rows: processedCount,
-         processing_errors: errors.length > 0 ? errors : null
-       })
-       .eq('id', jobId)
+    // Update job status to completed
+    await supabase
+      .from('import_jobs')
+      .update({
+        status: 'completed',
+        processing_completed_at: new Date().toISOString(),
+        progress: 100,
+        processed_rows: processedCount,
+        processing_errors: errors.length > 0 ? errors : null
+      })
+      .eq('id', jobId)
     
     console.log(`✅ [PROCESS] Processing completed for job ${jobId}`)
     console.log(`📊 [PROCESS] Results: ${processedCount} rows processed, ${errors.length} errors`)
@@ -220,18 +220,18 @@ async function processAccountsData(supabase: any, stagingData: any[], job: any, 
     console.log('🚀 [PROCESS] Processing accounts data...')
     console.log(`🚀 [PROCESS] Processing ${stagingData.length} account rows`)
     
-         // Update job status to show processing has started
-     await supabase
-       .from('import_jobs')
-       .update({
-         status: 'processing',
-         started_at: new Date().toISOString(),
-         progress: 0,
-         processed_rows: 0,
-         total_rows: totalRows,
-         processing_errors: null
-       })
-       .eq('id', job.id)
+    // Update job status to show processing has started
+    await supabase
+      .from('import_jobs')
+      .update({
+        status: 'processing',
+        started_at: new Date().toISOString(),
+        progress: 0,
+        processed_rows: 0,
+        total_rows: totalRows,
+        processing_errors: null
+      })
+      .eq('id', job.id)
     
     for (const row of stagingData) {
       try {
@@ -240,55 +240,55 @@ async function processAccountsData(supabase: any, stagingData: any[], job: any, 
         
         let personId: string | null = null
         
-                                                                                                           // Insert into persons table if SSN exists
-                                    if (mappedData.ssn && mappedData.ssn.trim() !== '') {
-             try {
-               // First try to find existing person by SSN
-               const { data: existingPerson, error: findError } = await supabase
-                 .from('persons')
-                 .select('id')
-                 .eq('ssn', mappedData.ssn.trim())
-                 .single()
-               
-               if (findError && findError.code !== 'PGRST116') { // PGRST116 = no rows returned
-                 console.error(`[PROCESS] Error finding person for row ${row.row_number}:`, findError)
-                 errors.push(`Row ${row.row_number}: Error finding person - ${findError.message}`)
-                 processedCount++
-                 continue
-               }
-               
-               if (existingPerson) {
-                 // Person already exists, use existing ID
-                 personId = existingPerson.id
-                 console.log(`✅ [PROCESS] Found existing person: ${personId}`)
-               } else {
-                 // Insert new person
-                 const { data: personData, error: personError } = await supabase
-                   .from('persons')
-                   .insert({
-                     ssn: mappedData.ssn.trim(),
-                     first_name: mappedData.first_name || null,
-                     last_name: mappedData.last_name || null,
-                     middle_name: mappedData.middle_name || null,
-                     dob: mappedData.date_of_birth || null,
-                     created_at: new Date().toISOString(),
-                     updated_at: new Date().toISOString()
-                   })
-                   .select('id')
-                   .single()
-                 
-                 if (personError) {
-                   console.error(`[PROCESS] Person insert error for row ${row.row_number}:`, personError)
-                   errors.push(`Row ${row.row_number}: Failed to insert person data - ${personError.message}`)
-                   processedCount++
-                   continue
-                 }
-                 
-                 personId = personData.id
-                 console.log(`✅ [PROCESS] New person created: ${personId}`)
-               }
-               
-               // Insert address information into person_addresses table if available
+        // Insert into persons table if SSN exists
+        if (mappedData.ssn && mappedData.ssn.trim() !== '') {
+          try {
+            // First try to find existing person by SSN
+            const { data: existingPerson, error: findError } = await supabase
+              .from('persons')
+              .select('id')
+              .eq('ssn', mappedData.ssn.trim())
+              .single()
+            
+            if (findError && findError.code !== 'PGRST116') { // PGRST116 = no rows returned
+              console.error(`[PROCESS] Error finding person for row ${row.row_number}:`, findError)
+              errors.push(`Row ${row.row_number}: Error finding person - ${findError.message}`)
+              processedCount++
+              continue
+            }
+            
+            if (existingPerson) {
+              // Person already exists, use existing ID
+              personId = existingPerson.id
+              console.log(`✅ [PROCESS] Found existing person: ${personId}`)
+            } else {
+              // Insert new person
+              const { data: personData, error: personError } = await supabase
+                .from('persons')
+                .insert({
+                  ssn: mappedData.ssn.trim(),
+                  first_name: mappedData.first_name || null,
+                  last_name: mappedData.last_name || null,
+                  middle_name: mappedData.middle_name || null,
+                  dob: mappedData.date_of_birth || null,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+                })
+                .select('id')
+                .single()
+              
+              if (personError) {
+                console.error(`[PROCESS] Person insert error for row ${row.row_number}:`, personError)
+                errors.push(`Row ${row.row_number}: Failed to insert person data - ${personError.message}`)
+                processedCount++
+                continue
+              }
+              
+              personId = personData.id
+              console.log(`✅ [PROCESS] New person created: ${personId}`)
+            }
+            
+            // Insert address information into person_addresses table if available
             if (mappedData.address_line1 || mappedData.city || mappedData.state) {
               const { error: addressError } = await supabase
                 .from('person_addresses')
@@ -399,27 +399,33 @@ async function processAccountsData(supabase: any, stagingData: any[], job: any, 
             
             console.log(`✅ [PROCESS] Account inserted for row ${row.row_number}`)
             processedCount++
-          } else {
-            // Handle rows without SSN - create a placeholder person or skip with error
-            console.warn(`⚠️ [PROCESS] Row ${row.row_number} has no SSN, skipping person creation`)
-            errors.push(`Row ${row.row_number}: No SSN provided - person creation skipped`)
+          } catch (personError) {
+            console.error(`[PROCESS] Error processing person for row ${row.row_number}:`, personError)
+            errors.push(`Row ${row.row_number}: Person processing error - ${personError instanceof Error ? personError.message : 'Unknown error'}`)
             processedCount++
+            continue
           }
+        } else {
+          // Handle rows without SSN - create a placeholder person or skip with error
+          console.warn(`⚠️ [PROCESS] Row ${row.row_number} has no SSN, skipping person creation`)
+          errors.push(`Row ${row.row_number}: No SSN provided - person creation skipped`)
+          processedCount++
+        }
+        
+        // Update progress every 5 rows or on the last row for more frequent updates
+        if (processedCount % 5 === 0 || processedCount === stagingData.length) {
+          const progress = Math.round((processedCount / stagingData.length) * 100)
+          await supabase
+            .from('import_jobs')
+            .update({
+              progress: progress,
+              processed_rows: processedCount,
+              processing_errors: errors.length > 0 ? errors : null
+            })
+            .eq('id', job.id)
           
-          // Update progress every 5 rows or on the last row for more frequent updates
-          if (processedCount % 5 === 0 || processedCount === stagingData.length) {
-            const progress = Math.round((processedCount / stagingData.length) * 100)
-            await supabase
-              .from('import_jobs')
-              .update({
-                progress: progress,
-                processed_rows: processedCount,
-                processing_errors: errors.length > 0 ? errors : null
-              })
-              .eq('id', job.id)
-            
-            console.log(`📊 [PROCESS] Progress: ${progress}% (${processedCount}/${stagingData.length} rows)`)
-          }
+          console.log(`📊 [PROCESS] Progress: ${progress}% (${processedCount}/${stagingData.length} rows)`)
+        }
         
       } catch (rowError) {
         console.error(`[PROCESS] Unexpected error processing row ${row.row_number}:`, rowError)

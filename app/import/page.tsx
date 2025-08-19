@@ -1200,6 +1200,9 @@ export default function ImportPage() {
                                   {job.status === 'validated' && (
                                     <span className="text-xs text-blue-600">Ready to Process</span>
                                   )}
+                                  {job.status === 'processing' && (
+                                    <span className="text-xs text-blue-600 animate-pulse">Processing...</span>
+                                  )}
                                 </div>
                                 {(job.status === 'processing' || job.status === 'validated') && (
                                   <div className="w-full bg-gray-200 rounded-full h-2">
@@ -1209,9 +1212,9 @@ export default function ImportPage() {
                                     ></div>
                                   </div>
                                 )}
-                                {job.processed_rows && job.total_rows && (
+                                {job.status === 'processing' && job.processed_rows && job.total_rows && (
                                   <div className="text-xs text-gray-500">
-                                    {job.processed_rows} / {job.total_rows} rows
+                                    {job.processed_rows} / {job.total_rows} rows processed
                                   </div>
                                 )}
                                 {job.status === 'validated' && job.validation_results && (

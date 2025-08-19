@@ -93,10 +93,10 @@ export default function ImportValidationResults({
                   />
                 </div>
                 <div className="text-xs text-muted-foreground text-center">
-                  {jobProgress < 30 && "Fetching data..."}
-                  {jobProgress >= 30 && jobProgress < 60 && "Analyzing data..."}
-                  {jobProgress >= 60 && jobProgress < 90 && "Running validation rules..."}
-                  {jobProgress >= 90 && "Finalizing results..."}
+                  {jobProgress! < 30 && "Fetching data..."}
+                  {jobProgress! >= 30 && jobProgress! < 60 && "Analyzing data..."}
+                  {jobProgress! >= 60 && jobProgress! < 90 && "Running validation rules..."}
+                  {jobProgress! >= 90 && "Finalizing results..."}
                 </div>
               </div>
             )}

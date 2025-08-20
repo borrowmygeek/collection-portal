@@ -56,82 +56,179 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Simple, clean profile fetch function
-  const fetchUserProfile = async (userId: string): Promise<UserProfile | null> => {
+  // Simple, clean profile fetch function with timeout and retry
+  const fetchUserProfile = async (userId: string, retryCount = 0): Promise<UserProfile | null> => {
+    const maxRetries = 2 // Max retries for profile fetch
+    
     try {
-      // Get basic profile data
-      const { data: profileData, error: profileError } = await supabase
-        .from('platform_users')
-        .select('id, email, auth_user_id, full_name, status')
-        .eq('auth_user_id', userId)
-        .single()
-
-      if (profileError || !profileData) {
-        console.error('❌ Profile fetch error:', profileError)
-        return null
-      }
-
-      // Get role session token from localStorage if available
-      let roleSessionToken: string | null = null
-      if (typeof window !== 'undefined') {
-        roleSessionToken = localStorage.getItem('roleSessionToken')
-      }
-
-      // Get active role with session token if available
-      const activeRoleResult = await supabase.rpc('get_user_active_role', { 
-        p_user_id: profileData.id,
-        p_session_token: roleSessionToken
+      console.log(`🔍 [AUTH] Starting profile fetch for user: ${userId} (attempt ${retryCount + 1}/${maxRetries + 1})`)
+      
+      // Monitor Supabase client state
+      console.log('🔍 [AUTH] Supabase client state:', {
+        hasAuth: !!supabase.auth,
+        hasRpc: !!supabase.rpc,
+        hasFrom: !!supabase.from,
+        timestamp: new Date().toISOString()
+      })
+      
+      // Add timeout to prevent hanging (reduced to 5 seconds)
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Profile fetch timeout after 5 seconds')), 5000)
       })
 
-      // Get all roles
-      const allRolesResult = await supabase.rpc('get_user_roles_simple', { p_user_id: profileData.id })
+      const profileFetchPromise = (async () => {
+        // Check database connection health first
+        console.log('🔍 [AUTH] Checking database connection health...')
+        const startTime = Date.now()
+        
+        try {
+          // Test basic connection with a simple query
+          const { data: healthCheck, error: healthError } = await supabase
+            .from('platform_users')
+            .select('id')
+            .limit(1)
+          
+          const healthCheckTime = Date.now() - startTime
+          console.log(`🔍 [AUTH] Database health check completed in ${healthCheckTime}ms:`, { 
+            success: !healthError, 
+            error: healthError,
+            responseTime: healthCheckTime 
+          })
+          
+          if (healthError) {
+            console.error('❌ [AUTH] Database health check failed:', healthError)
+            throw new Error(`Database connection failed: ${healthError.message}`)
+          }
+        } catch (healthError) {
+          console.error('❌ [AUTH] Database health check exception:', healthError)
+          throw healthError
+        }
 
-      if (activeRoleResult.error) {
-        console.error('❌ Active role fetch error:', activeRoleResult.error)
-        return null
-      }
+        // Get basic profile data
+        console.log('🔍 [AUTH] Fetching basic profile data...')
+        console.log('🔍 [AUTH] About to query platform_users table...')
+        
+        const queryStartTime = Date.now()
+        const { data: profileData, error: profileError } = await supabase
+          .from('platform_users')
+          .select('id, email, auth_user_id, full_name, status')
+          .eq('auth_user_id', userId)
+          .single()
 
-      if (allRolesResult.error) {
-        console.error('❌ All roles fetch error:', allRolesResult.error)
-        return null
-      }
+        const queryTime = Date.now() - queryStartTime
+        console.log(`🔍 [AUTH] platform_users query completed in ${queryTime}ms`)
+        console.log('🔍 [AUTH] Query result:', { data: profileData, error: profileError, queryTime })
 
-      if (!activeRoleResult.data) {
-        console.error('❌ No active role found')
-        return null
-      }
+        if (profileError || !profileData) {
+          console.error('❌ Profile fetch error:', profileError)
+          return null
+        }
 
-      // Transform the allRolesData to camelCase format
-      const availableRoles = (Array.isArray(allRolesResult.data) ? allRolesResult.data : []).map((role: any) => ({
-        id: role.id,
-        roleType: role.role_type,
-        organizationType: role.organization_type,
-        organizationId: role.organization_id,
-        organizationName: role.organization_name,
-        permissions: role.permissions || {}
-      }))
+        console.log('✅ [AUTH] Basic profile data fetched:', profileData)
 
-      const userProfile: UserProfile = {
-        id: profileData.id as string,
-        auth_user_id: profileData.auth_user_id as string,
-        email: profileData.email as string,
-        full_name: profileData.full_name as string,
-        status: profileData.status as 'active' | 'inactive' | 'suspended',
-        activeRole: {
-          roleId: (activeRoleResult.data as any).role_id as string,
-          roleType: (activeRoleResult.data as any).role_type as 'platform_admin' | 'agency_admin' | 'agency_user' | 'client_admin' | 'client_user' | 'buyer',
-          organizationType: (activeRoleResult.data as any).organization_type as 'platform' | 'agency' | 'client' | 'buyer',
-          organizationId: (activeRoleResult.data as any).organization_id as string,
-          organizationName: (activeRoleResult.data as any).organization_name as string || 'Unknown Organization',
-          permissions: (activeRoleResult.data as any).permissions || {}
-        },
-        availableRoles
-      }
+        // Get role session token from localStorage if available
+        let roleSessionToken: string | null = null
+        if (typeof window !== 'undefined') {
+          roleSessionToken = localStorage.getItem('roleSessionToken')
+        }
 
-      return userProfile
+        console.log('🔍 [AUTH] Fetching active role for user:', profileData.id, 'with session token:', roleSessionToken ? 'present' : 'none')
+        
+        // Get active role with session token if available
+        console.log('🔍 [AUTH] Calling get_user_active_role RPC...')
+        const activeRoleResult = await supabase.rpc('get_user_active_role', { 
+          p_user_id: profileData.id,
+          p_session_token: roleSessionToken
+        })
+
+        console.log('🔍 [AUTH] Active role result:', activeRoleResult)
+
+        // Get all roles
+        console.log('🔍 [AUTH] Calling get_user_roles_simple RPC...')
+        const allRolesResult = await supabase.rpc('get_user_roles_simple', { p_user_id: profileData.id })
+
+        console.log('🔍 [AUTH] All roles result:', allRolesResult)
+
+        if (activeRoleResult.error) {
+          console.error('❌ Active role fetch error:', activeRoleResult.error)
+          console.error('❌ Active role error details:', {
+            code: activeRoleResult.error.code,
+            message: activeRoleResult.error.message,
+            details: activeRoleResult.error.details,
+            hint: activeRoleResult.error.hint
+          })
+          return null
+        }
+
+        if (allRolesResult.error) {
+          console.error('❌ All roles fetch error:', allRolesResult.error)
+          console.error('❌ All roles error details:', {
+            code: allRolesResult.error.code,
+            message: allRolesResult.error.message,
+            details: allRolesResult.error.details,
+            hint: allRolesResult.error.hint
+          })
+          return null
+        }
+
+        if (!activeRoleResult.data) {
+          console.error('❌ No active role found for user:', profileData.id)
+          console.error('❌ Active role data was:', activeRoleResult.data)
+          return null
+        }
+
+        // Transform the allRolesData to camelCase format
+        const availableRoles = (Array.isArray(allRolesResult.data) ? allRolesResult.data : []).map((role: any) => ({
+          id: role.id,
+          roleType: role.role_type,
+          organizationType: role.organization_type,
+          organizationId: role.organization_id,
+          organizationName: role.organization_name,
+          permissions: role.permissions || {}
+        }))
+
+        const userProfile: UserProfile = {
+          id: profileData.id as string,
+          auth_user_id: profileData.auth_user_id as string,
+          email: profileData.email as string,
+          full_name: profileData.full_name as string,
+          status: profileData.status as 'active' | 'inactive' | 'suspended',
+          activeRole: {
+            roleId: (activeRoleResult.data as any).role_id as string,
+            roleType: (activeRoleResult.data as any).role_type as 'platform_admin' | 'agency_admin' | 'agency_user' | 'client_admin' | 'client_user' | 'buyer',
+            organizationType: (activeRoleResult.data as any).organization_type as 'platform' | 'agency' | 'client' | 'buyer',
+            organizationId: (activeRoleResult.data as any).organization_id as string,
+            organizationName: (activeRoleResult.data as any).organization_name as string || 'Unknown Organization',
+            permissions: (activeRoleResult.data as any).permissions || {}
+          },
+          availableRoles
+        }
+
+        console.log('✅ [AUTH] User profile constructed successfully:', userProfile)
+        return userProfile
+      })()
+
+      // Race between timeout and profile fetch
+      const result = await Promise.race([profileFetchPromise, timeoutPromise]) as UserProfile | null
+      console.log('✅ [AUTH] Profile fetch completed successfully')
+      return result
 
     } catch (error) {
-      console.error('❌ Profile fetch failed:', error)
+      console.error(`❌ Profile fetch failed (attempt ${retryCount + 1}):`, error)
+      
+      if (error instanceof Error && error.message.includes('timeout')) {
+        console.error('⏰ [AUTH] Profile fetch timed out - this suggests a database function issue')
+        
+        // Retry on timeout if we haven't exceeded max retries
+        if (retryCount < maxRetries) {
+          console.log(`🔄 [AUTH] Retrying profile fetch in 1 second... (${retryCount + 1}/${maxRetries})`)
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          return fetchUserProfile(userId, retryCount + 1)
+        } else {
+          console.error(`❌ [AUTH] Max retries (${maxRetries}) exceeded for profile fetch`)
+        }
+      }
+      
       return null
     }
   }
@@ -139,9 +236,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Clean auth initialization
   useEffect(() => {
     let mounted = true
+    console.log('🚀 [AUTH] Auth initialization started')
 
     const initializeAuth = async () => {
       try {
+        console.log('🔍 [AUTH] Getting initial session...')
         // Get initial session
         const { data: { session }, error } = await supabase.auth.getSession()
         
@@ -151,42 +250,68 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return
         }
 
+        console.log('🔍 [AUTH] Session result:', { hasSession: !!session, hasUser: !!session?.user })
+
         if (session?.user) {
+          console.log('✅ [AUTH] Setting user and session')
           setUser(session.user)
           setSession(session)
           
           // Fetch profile
+          console.log('🔍 [AUTH] Fetching user profile...')
           const userProfile = await fetchUserProfile(session.user.id)
+          console.log('🔍 [AUTH] Profile fetch result:', { hasProfile: !!userProfile })
+          
           if (mounted && userProfile) {
+            console.log('✅ [AUTH] Setting user profile')
             setProfile(userProfile)
+          } else {
+            console.log('❌ [AUTH] No profile found or component unmounted')
           }
+        } else {
+          console.log('ℹ️ [AUTH] No session found')
         }
       } catch (error) {
         console.error('❌ Auth initialization error:', error)
       } finally {
+        console.log('🔍 [AUTH] Setting loading to false')
         if (mounted) setLoading(false)
       }
     }
 
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return
+      console.log('🔄 [AUTH] Auth state change:', { event, hasSession: !!session, hasUser: !!session?.user })
+      
+      if (!mounted) {
+        console.log('🔄 [AUTH] Component unmounted, ignoring event')
+        return
+      }
 
       if (event === 'SIGNED_IN' && session?.user) {
+        console.log('✅ [AUTH] SIGNED_IN event, setting user and session')
         setUser(session.user)
         setSession(session)
         setLoading(true)
         
+        console.log('🔍 [AUTH] Fetching profile for SIGNED_IN event...')
         const userProfile = await fetchUserProfile(session.user.id)
+        console.log('🔍 [AUTH] Profile fetch result for SIGNED_IN:', { hasProfile: !!userProfile })
+        
         if (mounted && userProfile) {
+          console.log('✅ [AUTH] Setting profile for SIGNED_IN event')
           setProfile(userProfile)
         }
+        console.log('🔍 [AUTH] Setting loading to false for SIGNED_IN')
         setLoading(false)
       } else if (event === 'SIGNED_OUT') {
+        console.log('🚪 [AUTH] SIGNED_OUT event, clearing state')
         setUser(null)
         setSession(null)
         setProfile(null)
         setLoading(false)
+      } else {
+        console.log('ℹ️ [AUTH] Other auth event:', event)
       }
     })
 

@@ -22,7 +22,7 @@ const FIELD_MAPPINGS = {
   // Core Debt Information
   'account_number': ['account_number', 'account', 'acct', 'acnt', 'account_num', 'acct_num', 'acct_no', 'account_no', 'loan_number', 'loan_num', 'debt_number', 'debt_num', 'reference', 'ref', 'case_number', 'case_num', 'current_account', 'current_acct'],
   'original_account_number': ['original_account_number', 'original_account', 'orig_account', 'original_acct', 'orig_acct', 'original_account_num', 'orig_account_num', 'original_loan_number', 'original_loan_num', 'original_debt_number', 'original_debt_num', 'original_reference', 'original_ref', 'original_case_number', 'original_case_num'],
-  'original_creditor': ['original_creditor', 'creditor', 'original_cred', 'cred', 'creditor_name', 'original_lender', 'lender', 'bank', 'financial_institution', 'creditor_bank', 'original_bank', 'issuing_bank'],
+  'original_creditor': ['original_creditor', 'originalcreditor', 'originalcred', 'orig_creditor', 'origcreditor', 'creditor', 'original_cred', 'cred', 'creditor_name', 'original_lender', 'lender', 'bank', 'financial_institution', 'creditor_bank', 'original_bank', 'issuing_bank'],
   'original_balance': ['original_balance', 'orig_balance', 'original_bal', 'orig_bal', 'original_amount', 'orig_amount', 'principal_balance', 'principal', 'original_principal', 'loan_amount', 'debt_amount', 'original_debt'],
   'current_balance': ['current_balance', 'curr_balance', 'current_bal', 'curr_bal', 'balance', 'bal', 'amount', 'amt', 'outstanding_balance', 'outstanding_bal', 'remaining_balance', 'remaining_bal', 'current_amount', 'debt_balance'],
   'charge_off_date': ['charge_off_date', 'chargeoff_date', 'charge_off', 'chargeoff', 'co_date', 'charge_off_dt', 'chargeoff_dt', 'charged_off_date', 'charged_off', 'default_date', 'default_dt', 'write_off_date', 'write_off_dt'],
@@ -215,8 +215,30 @@ function fuzzyMatch(fieldName: string, targetField: string): number {
     'prefix': ['name_prefix'],
     'suffix': ['name_suffix'],
     'city': ['city'],
+    'worked': ['last_activity_date'],
+    'last_worked': ['last_activity_date'],
+    'lastworked': ['last_activity_date'],
+    'lastworkdate': ['last_activity_date'],
+    'lastworkdt': ['last_activity_date'],
+    'activity': ['last_activity_date'],
+    'last_activity': ['last_activity_date'],
+    'worked_date': ['last_activity_date'],
+    'work_date': ['last_activity_date'],
+    'workdate': ['last_activity_date'],
     'state': ['state'],
     'zip': ['zipcode'],
+    'bank': ['original_bank_name'],
+    'bank_name': ['original_bank_name'],
+    'original_bank': ['original_bank_name'],
+    'originalcreditor': ['original_creditor'],
+    'original_cred': ['original_creditor'],
+    'orig_creditor': ['original_creditor'],
+    'origcreditor': ['original_creditor'],
+    'custom': ['custom_field'],
+    'custom_field': ['custom_field'],
+    'custom1': ['custom_field'],
+    'custom2': ['custom_field'],
+    'custom3': ['custom_field'],
     'postal': ['zipcode'],
     'county': ['county'],
     'country': ['country'],
@@ -247,7 +269,6 @@ function fuzzyMatch(fieldName: string, targetField: string): number {
     'portfolio': ['portfolio_name'],
     'client': ['client_name'],
     'creditor': ['original_creditor', 'current_creditor'],
-    'original_creditor': ['original_creditor'],
     'current_creditor': ['current_creditor']
   }
   
@@ -399,7 +420,7 @@ function autoMatchFields(headers: string[], requiredFields: string[], optionalFi
   const phoneFields = allFields.filter(f => f.includes('phone'))
   const otherFields = allFields.filter(f => !f.includes('email') && !f.includes('phone'))
   
-  // First pass: exact matches and high confidence matches (score >= 0.8)
+  // First pass: exact matches and high confidence matches (score >= 0.6)
   for (const field of otherFields) {
     let bestMatch = ''
     let bestScore = 0
@@ -408,15 +429,20 @@ function autoMatchFields(headers: string[], requiredFields: string[], optionalFi
       if (usedHeaders.has(header)) continue
       
       const score = fuzzyMatch(header, field)
-      if (score > bestScore && score >= 0.8) {
+      console.log(`🔍 [AUTO MATCH] ${header} → ${field}: score ${score}`)
+      
+      if (score > bestScore && score >= 0.6) {
         bestScore = score
         bestMatch = header
       }
     }
     
     if (bestMatch) {
+      console.log(`✅ [AUTO MATCH] Auto-mapped ${field} to ${bestMatch} (score: ${bestScore})`)
       mapping[field] = bestMatch
       usedHeaders.add(bestMatch)
+    } else {
+      console.log(`❌ [AUTO MATCH] No match found for ${field} (threshold: 0.6)`)
     }
   }
   
@@ -450,6 +476,23 @@ function autoMatchFields(headers: string[], requiredFields: string[], optionalFi
       mapping[fieldName] = header
       usedHeaders.add(header)
     })
+  }
+  
+  // Special handling for last_activity_date with lower threshold
+  if (allFields.includes('last_activity_date') && !mapping['last_activity_date']) {
+    const activityHeaders = headers.filter(h => 
+      h.toLowerCase().includes('work') || 
+      h.toLowerCase().includes('activity') ||
+      h.toLowerCase().includes('lastworked') ||
+      h.toLowerCase().includes('last_worked')
+    ).filter(h => !usedHeaders.has(h))
+    
+    if (activityHeaders.length > 0) {
+      const bestHeader = activityHeaders[0]
+      console.log(`🎯 [SPECIAL MATCH] Auto-mapped last_activity_date to ${bestHeader}`)
+      mapping['last_activity_date'] = bestHeader
+      usedHeaders.add(bestHeader)
+    }
   }
   
   // Second pass: lower confidence matches (score >= 0.3) for remaining fields
@@ -563,6 +606,13 @@ export default function FieldMappingModal({
   const [editingTemplate, setEditingTemplate] = useState<ImportTemplate | null>(null)
   const [templateApplied, setTemplateApplied] = useState(false)
   const [mappingUpdated, setMappingUpdated] = useState(false)
+  const [showMappingMergeDialog, setShowMappingMergeDialog] = useState(false)
+  const [mappingMergeData, setMappingMergeData] = useState<{
+    oldMapping: Record<string, string>
+    newMapping: Record<string, string>
+    droppedFields: string[]
+    templateName: string
+  } | null>(null)
   
   // Track mapping source (auto vs manual)
   const [mappingSource, setMappingSource] = useState<Record<string, 'auto' | 'manual' | 'template'>>({})
@@ -593,32 +643,60 @@ export default function FieldMappingModal({
   }, [initialMapping])
 
   const handleChange = (field: string, value: string) => {
-    setMapping(prev => ({
-      ...prev,
-      [field]: value
-    }))
+    console.log('🔍 [MAPPING CHANGE] Field mapping updated:')
+    console.log('  - Field:', field)
+    console.log('  - Old value:', mapping[field])
+    console.log('  - New value:', value)
+    console.log('  - Previous mapping state:', mapping)
+    console.log('  - Previous mapping keys:', Object.keys(mapping))
+    
+    setMapping(prev => {
+      const newMapping = {
+        ...prev,
+        [field]: value
+      }
+      console.log('  - New mapping state:', newMapping)
+      console.log('  - New mapping keys:', Object.keys(newMapping))
+      return newMapping
+    })
+    
     // Mark as manual mapping
-    setMappingSource(prev => ({
-      ...prev,
-      [field]: 'manual'
-    }))
+    setMappingSource(prev => {
+      const newSource: Record<string, 'auto' | 'manual' | 'template'> = {
+        ...prev,
+        [field]: 'manual'
+      }
+      console.log('  - Updated mapping source:', newSource)
+      return newSource
+    })
   }
 
   const handleTemplateChange = (templateId: string) => {
+    console.log('🔍 [TEMPLATE CHANGE] Template selection changed:')
+    console.log('  - Selected template ID:', templateId)
+    
     setSelectedTemplateId(templateId)
     if (templateId) {
       const template = templates.find(t => t.id === templateId)
+      console.log('  - Found template:', template)
+      console.log('  - Template field_mappings:', template?.field_mappings)
+      
       if (template && template.field_mappings) {
+        console.log('  - Setting mapping from template:', template.field_mappings)
         setMapping(template.field_mappings)
+        
         // Mark all template mappings
         const templateSource: Record<string, 'auto' | 'manual' | 'template'> = {}
         Object.keys(template.field_mappings).forEach(field => {
           templateSource[field] = 'template'
         })
+        console.log('  - Setting mapping source:', templateSource)
         setMappingSource(templateSource)
         setTemplateApplied(true)
+        console.log('  - Template applied successfully')
       }
     } else {
+      console.log('  - No template selected, clearing mapping')
       setMapping({})
       setMappingSource({})
       setTemplateApplied(false)
@@ -626,7 +704,14 @@ export default function FieldMappingModal({
   }
 
   const handleAutoMatch = () => {
+    console.log('🔍 [AUTO MATCH] Auto-matching fields:')
+    console.log('  - Headers available:', headers)
+    console.log('  - Required fields:', requiredFields)
+    console.log('  - Optional fields:', optionalFields)
+    console.log('  - Current mapping before auto-match:', mapping)
+    
     const autoMapped = autoMatchFields(headers, requiredFields, optionalFields)
+    console.log('  - Auto-matched results:', autoMapped)
     
     // Preserve existing mappings and only auto-match unmapped fields
     const updatedMapping = { ...mapping }
@@ -637,11 +722,98 @@ export default function FieldMappingModal({
       if (!mapping[field] || mapping[field].trim() === '') {
         updatedMapping[field] = autoMapped[field]
         updatedSource[field] = 'auto'
+        console.log(`  - Auto-mapped ${field} to ${autoMapped[field]}`)
+      } else {
+        console.log(`  - Skipped ${field} (already mapped to ${mapping[field]})`)
       }
     })
     
+    console.log('  - Final mapping after auto-match:', updatedMapping)
+    console.log('  - Final mapping source after auto-match:', updatedSource)
+    
     setMapping(updatedMapping)
     setMappingSource(updatedSource)
+  }
+
+  const checkForDroppedFields = (oldMapping: Record<string, string>, newMapping: Record<string, string>): string[] => {
+    const droppedFields: string[] = []
+    Object.keys(oldMapping).forEach(field => {
+      if (!newMapping[field] || newMapping[field].trim() === '') {
+        droppedFields.push(field)
+      }
+    })
+    return droppedFields
+  }
+
+  const handleUpdateMappingWithMergeCheck = async () => {
+    console.log('🔘 [BUTTON] Update Mapping button clicked!')
+    console.log('🔍 [UPDATE MAPPING] Current state:')
+    console.log('  - selectedTemplateId:', selectedTemplateId)
+    console.log('  - current mapping state:', mapping)
+    console.log('  - onUpdateTemplate prop exists:', !!onUpdateTemplate)
+    
+    if (selectedTemplateId && onUpdateTemplate) {
+      try {
+        // Find the current template to get its details
+        const currentTemplate = templates.find(t => t.id === selectedTemplateId)
+        if (currentTemplate) {
+          console.log('🔍 [UPDATE MAPPING] Found current template:', currentTemplate)
+          console.log('🔍 [UPDATE MAPPING] Original field_mappings:', currentTemplate.field_mappings)
+          console.log('🔍 [UPDATE MAPPING] New field_mappings to save:', mapping)
+          
+          // Check for dropped fields
+          const droppedFields = checkForDroppedFields(currentTemplate.field_mappings || {}, mapping)
+          console.log('🔍 [UPDATE MAPPING] Dropped fields detected:', droppedFields)
+          
+          if (droppedFields.length > 0) {
+            // Show merge dialog
+            setMappingMergeData({
+              oldMapping: currentTemplate.field_mappings || {},
+              newMapping: mapping,
+              droppedFields,
+              templateName: currentTemplate.name
+            })
+            setShowMappingMergeDialog(true)
+          } else {
+            // No dropped fields, proceed with update
+            await updateTemplateMapping(currentTemplate, mapping)
+          }
+        } else {
+          console.error('❌ [UPDATE MAPPING] Could not find current template')
+          alert('Error: Could not find current template')
+        }
+      } catch (error) {
+        console.error('❌ [UPDATE MAPPING] Failed to update template:', error)
+        alert('Error updating template: ' + (error instanceof Error ? error.message : String(error)))
+      }
+    } else {
+      // Just update the mapping in the parent component for session use
+      console.log('🔍 [UPDATE MAPPING] No template selected, updating session mapping only')
+      if (onMappingUpdate) {
+        onMappingUpdate(mapping)
+      }
+      setMappingUpdated(true)
+      setTimeout(() => setMappingUpdated(false), 2000)
+    }
+  }
+
+  const updateTemplateMapping = async (template: ImportTemplate, finalMapping: Record<string, string>) => {
+    try {
+      const result = await onUpdateTemplate!(template.id, {
+        ...template,
+        field_mappings: finalMapping
+      })
+      
+      console.log('✅ [UPDATE MAPPING] Template update result:', result)
+      
+      // Show success feedback
+      setMappingUpdated(true)
+      setTimeout(() => setMappingUpdated(false), 2000)
+      alert('Template field mappings updated in database!')
+    } catch (error) {
+      console.error('❌ [UPDATE MAPPING] Failed to update template:', error)
+      alert('Error updating template: ' + (error instanceof Error ? error.message : String(error)))
+    }
   }
 
   const handleSaveTemplate = async () => {
@@ -663,20 +835,73 @@ export default function FieldMappingModal({
   }
 
   const handleUpdateTemplate = async () => {
-    if (!editingTemplate || !templateName.trim()) return
+    console.log('🚀 [FIELD MAPPING] handleUpdateTemplate called!')
+    console.log('🔍 [FIELD MAPPING] Detailed state analysis:')
+    console.log('  - editingTemplate exists:', !!editingTemplate)
+    console.log('  - editingTemplate.id:', editingTemplate?.id)
+    console.log('  - editingTemplate.name:', editingTemplate?.name)
+    console.log('  - editingTemplate.field_mappings:', editingTemplate?.field_mappings)
+    console.log('  - templateName:', templateName)
+    console.log('  - templateName.trim():', templateName.trim())
+    console.log('  - templateDescription:', templateDescription)
+    console.log('  - current mapping state:', mapping)
+    console.log('  - mapping type:', typeof mapping)
+    console.log('  - mapping keys count:', Object.keys(mapping).length)
+    console.log('  - mapping entries:', Object.entries(mapping))
+    console.log('  - onUpdateTemplate prop exists:', !!onUpdateTemplate)
+    console.log('  - onUpdateTemplate type:', typeof onUpdateTemplate)
+    
+    if (!editingTemplate || !templateName.trim()) {
+      console.log('❌ [FIELD MAPPING] Validation failed:')
+      console.log('  - editingTemplate missing:', !editingTemplate)
+      console.log('  - templateName empty:', !templateName.trim())
+      return
+    }
     
     try {
-      await onUpdateTemplate?.(editingTemplate.id, {
+      console.log('🔄 [FIELD MAPPING] Starting template update...')
+      
+      const updateData = {
         name: templateName,
         description: templateDescription,
+        import_type: editingTemplate.import_type,
         field_mappings: mapping
-      })
+      }
+      
+      console.log('🔄 [FIELD MAPPING] Update data being sent:')
+      console.log('  - updateData:', updateData)
+      console.log('  - updateData.field_mappings:', updateData.field_mappings)
+      console.log('  - updateData.field_mappings type:', typeof updateData.field_mappings)
+      console.log('  - updateData.field_mappings keys:', Object.keys(updateData.field_mappings))
+      
+      if (onUpdateTemplate) {
+        console.log('🔄 [FIELD MAPPING] Calling onUpdateTemplate with:')
+        console.log('  - templateId:', editingTemplate.id)
+        console.log('  - updateData:', updateData)
+        
+        const result = await onUpdateTemplate(editingTemplate.id, updateData)
+        console.log('✅ [FIELD MAPPING] onUpdateTemplate completed with result:', result)
+      } else {
+        console.log('❌ [FIELD MAPPING] onUpdateTemplate prop is undefined!')
+        return
+      }
+      
+      console.log('✅ [FIELD MAPPING] Template update completed successfully')
+      console.log('🔄 [FIELD MAPPING] Cleaning up UI state...')
+      
       setShowTemplateManager(false)
       setEditingTemplate(null)
       setTemplateName('')
       setTemplateDescription('')
+      
+      console.log('✅ [FIELD MAPPING] UI state cleaned up')
     } catch (error) {
-      console.error('Failed to update template:', error)
+      console.error('❌ [FIELD MAPPING] Failed to update template:', error)
+      console.error('❌ [FIELD MAPPING] Error details:', {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      })
     }
   }
 
@@ -708,7 +933,8 @@ export default function FieldMappingModal({
       f.includes('bank') || f.includes('routing') || f.includes('checking') || f.includes('savings') ||
       f.includes('aba') || f.includes('financial_institution') || f.includes('banking_institution') ||
       f.includes('lending') || f.includes('originating') || f.includes('payday') || f.includes('loan') ||
-      f.includes('debit') || f.includes('holder')
+      f.includes('debit') || f.includes('holder') || f.includes('creditor') || f.includes('date_opened') ||
+      f.includes('last_payment_date') || f.includes('last_activity_date') || f.includes('debt_age')
     ),
     debtor: optionalFields.filter(f => 
       (f.includes('name') || f.includes('address') || f.includes('ssn') || 
@@ -1226,15 +1452,7 @@ export default function FieldMappingModal({
                       </Button>
                       <Button
                         type="button"
-                        onClick={() => {
-                          // Update the mapping in the parent component
-                          if (onMappingUpdate) {
-                            onMappingUpdate(mapping)
-                          }
-                          setMappingUpdated(true)
-                          // Reset the flag after a short delay
-                          setTimeout(() => setMappingUpdated(false), 2000)
-                        }}
+                        onClick={handleUpdateMappingWithMergeCheck}
                         disabled={missingRequired.length > 0}
                         className={`!border-green-600 !hover:border-green-700 ${
                           mappingUpdated 
@@ -1336,9 +1554,21 @@ export default function FieldMappingModal({
                           variant="outline"
                           size="sm"
                           onClick={() => {
+                            console.log('🔘 [BUTTON] Edit button clicked for template:', template)
+                            alert(`Editing template: ${template.name}. Check console for logs.`)
                             setEditingTemplate(template)
                             setTemplateName(template.name)
                             setTemplateDescription(template.description || '')
+                            // Update the current mapping state with the template's field mappings
+                            console.log('🔄 [EDIT] Setting mapping to:', template.field_mappings)
+                            setMapping(template.field_mappings || {})
+                            // Update mapping source to indicate these are from template
+                            const templateSource: Record<string, 'auto' | 'manual' | 'template'> = {}
+                            Object.keys(template.field_mappings || {}).forEach(field => {
+                              templateSource[field] = 'template'
+                            })
+                            setMappingSource(templateSource)
+                            console.log('✅ [EDIT] Template editing setup complete')
                           }}
                         >
                           Edit
@@ -1357,6 +1587,69 @@ export default function FieldMappingModal({
                   </div>
                 ))}
               </div>
+              {/* Template editing form */}
+              {editingTemplate && (
+                <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
+                  <h5 className="font-medium text-blue-900 mb-4">Edit Template: {editingTemplate.name}</h5>
+                  <div className="space-y-4">
+                    <div>
+                      <Label>Template Name</Label>
+                      <input
+                        type="text"
+                        value={templateName}
+                        onChange={(e) => setTemplateName(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        placeholder="Enter template name"
+                      />
+                    </div>
+                    <div>
+                      <Label>Description (Optional)</Label>
+                      <textarea
+                        value={templateDescription}
+                        onChange={(e) => setTemplateDescription(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        placeholder="Enter description"
+                        rows={3}
+                      />
+                    </div>
+                    <div className="flex justify-end space-x-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingTemplate(null)
+                          setTemplateName('')
+                          setTemplateDescription('')
+                        }}
+                      >
+                        Cancel Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          console.log('🔘 [BUTTON] Update Template button clicked!')
+                          console.log('🔍 [BUTTON] Current state when Update clicked:')
+                          console.log('  - editingTemplate:', editingTemplate)
+                          console.log('  - templateName:', templateName)
+                          console.log('  - templateDescription:', templateDescription)
+                          console.log('  - current mapping state:', mapping)
+                          console.log('  - original template field_mappings:', editingTemplate?.field_mappings)
+                          console.log('  - mapping keys:', Object.keys(mapping))
+                          console.log('  - original mapping keys:', Object.keys(editingTemplate?.field_mappings || {}))
+                          
+                          // Remove the alert to avoid blocking
+                          handleUpdateTemplate()
+                        }}
+                        disabled={!templateName.trim()}
+                        className="bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        Update Template
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-end">
                 <Button
                   type="button"
@@ -1364,6 +1657,133 @@ export default function FieldMappingModal({
                   onClick={() => setShowTemplateManager(false)}
                 >
                   Close
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Field Mapping Merge Dialog */}
+      {showMappingMergeDialog && mappingMergeData && (
+        <Dialog open={showMappingMergeDialog} onOpenChange={() => setShowMappingMergeDialog(false)}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Field Mapping Merge Required</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+                <h4 className="text-sm font-medium text-yellow-900 mb-2">
+                  Template "{mappingMergeData.templateName}" has {mappingMergeData.droppedFields.length} field(s) that are not mapped in the current import file.
+                </h4>
+                <p className="text-sm text-yellow-800">
+                  These fields were previously mapped and may be used in other import files. Choose how to handle them:
+                </p>
+              </div>
+              
+              <div className="space-y-3">
+                <h5 className="font-medium text-gray-900">Dropped Fields:</h5>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  {mappingMergeData.droppedFields.map(field => (
+                    <div key={field} className="p-2 bg-gray-100 rounded border">
+                      <span className="font-medium">{field}</span>
+                      <span className="text-gray-600 ml-2">→ {mappingMergeData.oldMapping[field]}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h5 className="font-medium text-gray-900">Choose Action:</h5>
+                <div className="space-y-2">
+                  <div className="flex items-start space-x-3 p-3 border border-blue-200 rounded-md bg-blue-50">
+                    <input
+                      type="radio"
+                      id="merge-keep"
+                      name="merge-action"
+                      value="keep"
+                      defaultChecked
+                      className="mt-1"
+                    />
+                    <div>
+                      <label htmlFor="merge-keep" className="font-medium text-blue-900">
+                        Keep All Fields (Recommended)
+                      </label>
+                      <p className="text-sm text-blue-800 mt-1">
+                        Merge new mappings with existing ones. This preserves all historical field mappings 
+                        and ensures compatibility with other import files that may use these fields.
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start space-x-3 p-3 border border-red-200 rounded-md bg-red-50">
+                    <input
+                      type="radio"
+                      id="merge-replace"
+                      name="merge-action"
+                      value="replace"
+                      className="mt-1"
+                    />
+                    <div>
+                      <label htmlFor="merge-replace" className="font-medium text-red-900">
+                        Replace All Fields
+                      </label>
+                      <p className="text-sm text-red-800 mt-1">
+                        Use only the current import file's mappings. This will remove the dropped fields 
+                        from the template permanently.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowMappingMergeDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={async () => {
+                    const action = document.querySelector('input[name="merge-action"]:checked') as HTMLInputElement
+                    if (!action) return
+                    
+                    try {
+                      let finalMapping: Record<string, string>
+                      
+                      if (action.value === 'keep') {
+                        // Merge: keep old mappings and add new ones
+                        finalMapping = {
+                          ...mappingMergeData.oldMapping,
+                          ...mappingMergeData.newMapping
+                        }
+                        console.log('🔀 [MERGE] Keeping all fields, final mapping:', finalMapping)
+                      } else {
+                        // Replace: use only new mappings
+                        finalMapping = mappingMergeData.newMapping
+                        console.log('🔄 [MERGE] Replacing all fields, final mapping:', finalMapping)
+                      }
+                      
+                      // Find the current template to update
+                      const currentTemplate = templates.find(t => t.id === selectedTemplateId)
+                      if (currentTemplate) {
+                        await updateTemplateMapping(currentTemplate, finalMapping)
+                      }
+                      
+                      // Close dialog
+                      setShowMappingMergeDialog(false)
+                      setMappingMergeData(null)
+                    } catch (error) {
+                      console.error('❌ [MERGE] Failed to process merge:', error)
+                      alert('Error processing merge: ' + (error instanceof Error ? error.message : String(error)))
+                    }
+                  }}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  Process Mapping Update
                 </Button>
               </div>
             </div>

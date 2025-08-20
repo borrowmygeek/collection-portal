@@ -15,9 +15,23 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   const router = useRouter()
   const [isRedirecting, setIsRedirecting] = useState(false)
 
+  console.log('🛡️ [PROTECTED] ProtectedRoute render:', { 
+    hasUser: !!user, 
+    hasProfile: !!profile, 
+    loading, 
+    isRedirecting 
+  })
+
   // Handle redirect to login using useEffect to avoid render-time redirects
   useEffect(() => {
+    console.log('🛡️ [PROTECTED] useEffect triggered:', { 
+      loading, 
+      hasUser: !!user, 
+      isRedirecting 
+    })
+    
     if (!loading && !user && !isRedirecting) {
+      console.log('🔄 [PROTECTED] Redirecting to login - no user found')
       setIsRedirecting(true)
       router.replace('/auth/login')
     }
@@ -25,6 +39,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
 
   // Wait for authentication to be determined
   if (loading) {
+    console.log('🛡️ [PROTECTED] Showing loading spinner - auth still loading')
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -37,6 +52,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
 
   // If not authenticated and redirecting, show loading
   if (!user || isRedirecting) {
+    console.log('🛡️ [PROTECTED] Showing redirect spinner - no user or redirecting')
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -50,6 +66,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   // If user is authenticated but profile is still loading, wait a bit longer
   // But only if we're not in a sign-out state (user exists)
   if (user && !profile) {
+    console.log('🛡️ [PROTECTED] Showing profile loading spinner - user exists but no profile')
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">

@@ -405,6 +405,12 @@ export default function ImportPage() {
 
   const handleUpdateTemplate = async (templateId: string, template: any) => {
     try {
+      console.log('🔄 [TEMPLATE UPDATE] Starting update with:', {
+        templateId,
+        template,
+        session: !!session?.access_token
+      })
+      
       const response = await fetch(`/api/import/templates/${templateId}`, {
         method: 'PUT',
         headers: {
@@ -414,14 +420,26 @@ export default function ImportPage() {
         body: JSON.stringify(template)
       })
 
+      console.log('🔄 [TEMPLATE UPDATE] Response:', {
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText
+      })
+
       if (response.ok) {
+        const result = await response.json()
+        console.log('✅ [TEMPLATE UPDATE] Success:', result)
         // Refresh templates
         fetchTemplates()
+        alert('Template updated successfully!')
       } else {
-        console.error('Failed to update template')
+        const errorData = await response.json()
+        console.error('❌ [TEMPLATE UPDATE] Failed:', errorData)
+        alert(`Failed to update template: ${errorData.error || 'Unknown error'}`)
       }
     } catch (error) {
-      console.error('Error updating template:', error)
+      console.error('❌ [TEMPLATE UPDATE] Error:', error)
+      alert(`Error updating template: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 

@@ -78,12 +78,53 @@ export async function PUT(
     }
 
     // Check if user has permission to update this template
-    if (template.created_by !== user.id) {
-      return NextResponse.json({ error: 'Unauthorized to update this template' }, { status: 403 })
+    console.log('🔍 [TEMPLATE UPDATE] Permission check:', {
+      templateCreatedBy: template.created_by,
+      currentUserId: user.id,
+      templateId: params.id,
+      templateName: template.name
+    })
+    
+    // Allow update if:
+    // 1. User created the template, OR
+    // 2. Template has no created_by (legacy templates), OR  
+    // 3. User is a platform admin
+    const canUpdate = (
+      template.created_by === user.id || 
+      !template.created_by ||
+      user.activeRole.roleType === 'platform_admin'
+    )
+    
+    if (!canUpdate) {
+      console.log('❌ [TEMPLATE UPDATE] Permission denied:', {
+        templateCreatedBy: template.created_by,
+        currentUserId: user.id,
+        userRole: user.activeRole.roleType,
+        mismatch: template.created_by !== user.id
+      })
+      return NextResponse.json({ 
+        error: 'Unauthorized to update this template',
+        details: {
+          templateCreatedBy: template.created_by,
+          currentUserId: user.id,
+          userRole: user.activeRole.roleType,
+          reason: 'Template was created by a different user and you are not a platform admin'
+        }
+      }, { status: 403 })
     }
 
     const body = await request.json()
     const { name, description, import_type, field_mappings, validation_rules } = body
+
+    console.log('🔍 [TEMPLATE UPDATE] Request body:', {
+      name,
+      description,
+      import_type,
+      field_mappings,
+      validation_rules,
+      fieldMappingsType: typeof field_mappings,
+      fieldMappingsKeys: field_mappings ? Object.keys(field_mappings) : null
+    })
 
     // Validate required fields
     if (!name || !import_type) {
@@ -107,35 +148,51 @@ export async function PUT(
       }
     }
 
-    // Convert field_mappings to required_columns and optional_columns format
-    const requiredColumns = field_mappings ? Object.keys(field_mappings).filter(key => 
-      field_mappings[key] && field_mappings[key].trim() !== ''
-    ) : []
-    const optionalColumns = field_mappings ? Object.keys(field_mappings).filter(key => 
-      !field_mappings[key] || field_mappings[key].trim() === ''
-    ) : []
+    // For template updates, we should preserve the existing required/optional column structure
+    // and only update the field_mappings. The required_columns and optional_columns
+    // should represent the field definitions, not the current mapping status.
+    
+    // Get the existing template structure to preserve required vs optional field definitions
+    const existingRequiredColumns = template.required_columns || []
+    const existingOptionalColumns = template.optional_columns || []
+    
+    // Only update field_mappings, preserve the existing column structure
+    const requiredColumns = existingRequiredColumns
+    const optionalColumns = existingOptionalColumns
 
     // Update the template
+    const updateData = {
+      name,
+      description,
+      import_type,
+      field_mappings: field_mappings || {},
+      required_columns: requiredColumns,
+      optional_columns: optionalColumns,
+      validation_rules: validation_rules || [],
+      updated_at: new Date().toISOString()
+    }
+    
+    console.log('🔍 [TEMPLATE UPDATE] Update data being sent to database:', {
+      updateData,
+      templateId: params.id
+    })
+    
     const { data: updatedTemplate, error } = await supabase
       .from('import_templates')
-      .update({
-        name,
-        description,
-        import_type,
-        field_mappings: field_mappings || {},
-        required_columns: requiredColumns,
-        optional_columns: optionalColumns,
-        validation_rules: validation_rules || [],
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', params.id)
       .select()
       .single()
 
     if (error) {
-      console.error('Error updating template:', error)
+      console.error('❌ [TEMPLATE UPDATE] Database error:', error)
       return NextResponse.json({ error: 'Failed to update template' }, { status: 500 })
     }
+
+    console.log('✅ [TEMPLATE UPDATE] Database update successful:', {
+      updatedTemplate: updatedTemplate,
+      updatedFieldMappings: updatedTemplate.field_mappings
+    })
 
     return NextResponse.json({ template: updatedTemplate })
   } catch (error) {
@@ -174,7 +231,24 @@ export async function DELETE(
     }
 
     // Check if user has permission to delete this template
-    if (template.created_by !== user.id) {
+    // Allow delete if:
+    // 1. User created the template, OR
+    // 2. Template has no created_by (legacy templates), OR  
+    // 3. User is a platform admin
+    const canDelete = (
+      template.created_by === user.id || 
+      !template.created_by ||
+      user.activeRole.roleType === 'platform_admin'
+    )
+    
+    if (!canDelete) {
+      console.log('❌ [TEMPLATE DELETE] Permission denied:', {
+        templateCreatedBy: template.created_by,
+        currentUserId: user.id,
+        templateId: params.id,
+        templateName: template.name,
+        userRole: user.activeRole.roleType
+      })
       return NextResponse.json({ error: 'Unauthorized to delete this template' }, { status: 403 })
     }
 

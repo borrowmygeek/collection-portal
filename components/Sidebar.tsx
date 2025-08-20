@@ -37,6 +37,7 @@ const navigationItems = [
   { name: 'Import', href: '/import', icon: ArrowUpTrayIcon },
   { name: 'Admin Imports', href: '/admin/imports', icon: ArrowUpTrayIcon },
   { name: 'Debtors', href: '/debtors', icon: UserGroupIcon },
+  { name: 'Collectors', href: '/collectors', icon: UserGroupIcon },
   { name: 'Security', href: '/security', icon: ShieldCheckIcon },
 ]
 
@@ -53,6 +54,7 @@ const navigationPermissions = {
   'Import': ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user'],
   'Admin Imports': ['platform_admin'],
   'Debtors': ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user'],
+  'Collectors': ['platform_admin', 'agency_admin', 'agency_user', 'client_admin', 'client_user'],
   'Security': ['platform_admin'],
 }
 

@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
       filteredDebtAccounts = debtAccounts.filter(debtAccount => {
         // Check if any phone number in the person's phones matches
         const personPhones = debtAccount.persons?.person_phones || []
-        return personPhones.some(phone => 
+                return personPhones.some((phone: any) =>
           phone.number && phone.number.replace(/\D/g, '').includes(normalizedPhone)
         )
       })

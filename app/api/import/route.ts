@@ -943,6 +943,17 @@ export async function POST(request: NextRequest) {
         template_id: templateId || null
       })
       
+      console.log('🔍 Import API: About to insert import job with data:', {
+        user_id: user.auth_user_id,
+        file_name: file.name,
+        file_size: file.size,
+        file_type: file.name.endsWith('.csv') ? 'csv' : 'xlsx',
+        import_type: importType,
+        template_id: templateId || null,
+        portfolio_id: portfolioId || null,
+        status: 'pending'
+      })
+      
       const { data: job, error: jobError } = await supabase
         .from('import_jobs')
         .insert({
@@ -960,6 +971,12 @@ export async function POST(request: NextRequest) {
 
       if (jobError) {
         console.error('❌ Import API: Error creating import job:', jobError)
+        console.error('❌ Import API: Job error details:', {
+          code: jobError.code,
+          message: jobError.message,
+          details: jobError.details,
+          hint: jobError.hint
+        })
         return NextResponse.json(
           { error: `Failed to create import job: ${jobError.message}` },
           { status: 500 }

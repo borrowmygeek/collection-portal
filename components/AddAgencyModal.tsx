@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { XMarkIcon } from '@heroicons/react/24/outline'
 
 interface AddAgencyModalProps {
@@ -59,7 +59,8 @@ export default function AddAgencyModal({ isOpen, onClose, onSuccess }: AddAgency
 
     try {
       // Debug: Check current user and permissions
-      const { data: { user } } = await supabase.auth.getUser()
+      const supabase = getSupabase()
+    const { data: { user } } = await supabase.auth.getUser()
       console.log('🔍 Current User Debug Info:')
       console.log('User:', user)
       console.log('User Metadata:', user?.user_metadata)

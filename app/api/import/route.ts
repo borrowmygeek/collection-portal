@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminSupabaseClient, authenticateApiRequest } from '@/lib/auth-utils'
 import ExcelJS from 'exceljs'
-import { authenticateApiRequest } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
 import { logDataAccess, logDataModification, AUDIT_ACTIONS } from '@/lib/audit-log'
 import { sanitizeString, sanitizeEmail, sanitizePhone, sanitizeAddress, containsSqlInjection } from '@/lib/validation'
 
-// Force dynamic runtime for this API route
-export const dynamic = 'force-dynamic'
+// Force edge runtime for this API route
+export const runtime = 'edge'
 
 // Simple validation function for import data
 function validateImportData(data: any): { isValid: boolean; errors: string[] } {
@@ -38,18 +37,6 @@ function sanitizeImportData(data: any): any {
   return sanitized
 }
 
-// Create admin client for data operations
-const createAdminSupabaseClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase admin environment variables not configured')
-  }
-  
-  return createClient(supabaseUrl, supabaseServiceKey)
-}
-
 // Import processing function - moved to top for accessibility
 async function processImportJob(jobId: string, filePath: string, fieldMapping: any, portfolioId: string) {
   console.log(`🚀 [PROCESS IMPORT] Function entered with params:`, { jobId, filePath, fieldMapping, portfolioId })
@@ -61,10 +48,7 @@ async function processImportJob(jobId: string, filePath: string, fieldMapping: a
     console.log(`🚀 Starting import job ${jobId} with temp table approach`)
     
     // Create Supabase client
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const supabase = createAdminSupabaseClient()
     
     // Update job status to processing
     await supabase
@@ -392,10 +376,7 @@ async function processImportJob(jobId: string, filePath: string, fieldMapping: a
     if (tempTableName) {
       try {
         console.log(`🧹 [IMPORT] Cleaning up staging table: ${tempTableName}`)
-        const cleanupSupabase = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY!
-        )
+        const cleanupSupabase = createAdminSupabaseClient()
         await cleanupStagingTable(cleanupSupabase, tempTableName)
         console.log(`✅ [IMPORT] Staging table cleanup completed`)
       } catch (cleanupError) {
@@ -407,10 +388,7 @@ async function processImportJob(jobId: string, filePath: string, fieldMapping: a
     // Update job status to failed
     try {
       console.log(`🔄 [IMPORT] Updating job status to 'failed' for job ${jobId}`)
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      )
+      const supabase = createAdminSupabaseClient()
       
       const updateResult = await supabase
         .from('import_jobs')
@@ -1192,7 +1170,7 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    const personIds = debtAccounts.map(d => d.person_id).filter(id => id !== null)
+    const personIds = debtAccounts.map((d: any) => d.person_id).filter((id: any) => id !== null)
 
     // 2. Delete all debt accounts from this import job
     const { error: debtAccountsDeleteError } = await supabase
@@ -1222,7 +1200,7 @@ export async function DELETE(request: NextRequest) {
         .select('id, person_id')
         .in('person_id', personIds)
 
-      const debtAccountIds = debtAccountsForPersons?.map(d => d.id) || []
+      const debtAccountIds = debtAccountsForPersons?.map((d: any) => d.id) || []
 
       // Get all person IDs that have payments through their debt accounts
       const { data: debtorsWithPayments } = await supabase
@@ -1230,17 +1208,17 @@ export async function DELETE(request: NextRequest) {
         .select('debtor_id')
         .in('debtor_id', debtAccountIds)
 
-      const debtorsWithPaymentsIds = debtorsWithPayments?.map(p => p.debtor_id) || []
-      const debtAccountsWithPayments = debtAccountsForPersons?.filter(d => debtorsWithPaymentsIds.includes(d.id)) || []
-      const personIdsWithPayments = debtAccountsWithPayments.map(d => d.person_id).filter(id => id !== null)
+      const debtorsWithPaymentsIds = debtorsWithPayments?.map((p: any) => p.debtor_id) || []
+      const debtAccountsWithPayments = debtAccountsForPersons?.filter((d: any) => debtorsWithPaymentsIds.includes(d.id)) || []
+      const personIdsWithPayments = debtAccountsWithPayments.map((d: any) => d.person_id).filter((id: any) => id !== null)
 
       // Find person IDs that are safe to delete
       const remainingPersonIds = new Set([
-        ...(remainingDebtAccounts?.map(d => d.person_id) || []),
+        ...(remainingDebtAccounts?.map((d: any) => d.person_id) || []),
         ...personIdsWithPayments
       ])
 
-      const safeToDeletePersonIds = personIds.filter(id => !remainingPersonIds.has(id))
+      const safeToDeletePersonIds = personIds.filter((id: any) => !remainingPersonIds.has(id))
 
       if (safeToDeletePersonIds.length > 0) {
         const { error: personsDeleteError } = await supabase

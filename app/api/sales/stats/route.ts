@@ -1,21 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { authenticateApiRequest } from '@/lib/auth-utils'
+import { createAdminSupabaseClient, authenticateApiRequest } from '@/lib/auth-utils'
 
-// Force dynamic runtime for this API route
-export const dynamic = 'force-dynamic'
-
-// Create admin client for data operations
-const createAdminSupabaseClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase admin environment variables not configured')
-  }
-  
-  return createClient(supabaseUrl, supabaseServiceKey)
-}
+// Force edge runtime for this API route
+export const runtime = 'edge'
 
 export async function GET(request: NextRequest) {
   try {
@@ -94,18 +81,18 @@ export async function GET(request: NextRequest) {
 
     // Calculate statistics
     const totalAvailablePortfolios = salesStats?.length || 0
-    const totalPortfolioValue = salesStats?.reduce((sum, sale) => {
+    const totalPortfolioValue = salesStats?.reduce((sum: any, sale: any) => {
       return sum + (sale.asking_price || 0)
     }, 0) || 0
     const averagePortfolioSize = totalAvailablePortfolios > 0 ? totalPortfolioValue / totalAvailablePortfolios : 0
     
     const totalBuyers = buyerStats?.length || 0
-    const activeBuyers = buyerStats?.filter(buyer => 
+    const activeBuyers = buyerStats?.filter((buyer: any) => 
       buyer.status === 'approved' && buyer.nda_signed
     ).length || 0
     
     const totalInquiries = inquiryStats?.length || 0
-    const pendingInquiries = inquiryStats?.filter(inquiry => 
+    const pendingInquiries = inquiryStats?.filter((inquiry: any) => 
       inquiry.status === 'pending'
     ).length || 0
 

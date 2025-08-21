@@ -1,24 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { authenticateApiRequest } from '@/lib/auth-utils'
+import { createAdminSupabaseClient, authenticateApiRequest } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
 import { logDataAccess, logDataModification, logSecurityEvent, logUserAction, AUDIT_ACTIONS } from '@/lib/audit-log'
 import { sendNDAConfirmationEmail } from '@/lib/email'
 
-// Force dynamic runtime for this API route
-export const dynamic = 'force-dynamic'
-
-// Create admin client for data operations
-const createAdminSupabaseClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase admin environment variables not configured')
-  }
-  
-  return createClient(supabaseUrl, supabaseServiceKey)
-}
+// Force edge runtime for this API route
+export const runtime = 'edge'
 
 export async function GET(request: NextRequest) {
   try {

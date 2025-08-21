@@ -1,6 +1,9 @@
 import { createSupabaseClient } from './supabase'
 
-const supabase = createSupabaseClient()
+// Create Supabase client function - lazy-loaded to prevent build-time execution
+function getAuditSupabaseClient() {
+  return createSupabaseClient()
+}
 
 // Audit action types
 export const AUDIT_ACTIONS = {
@@ -51,6 +54,7 @@ export async function logUserAction(
   userAgent?: string
 ): Promise<void> {
   try {
+    const supabase = getAuditSupabaseClient()
     await supabase
       .from('audit_logs')
       .insert({
@@ -76,6 +80,7 @@ export async function logSecurityEvent(
   userAgent?: string
 ): Promise<void> {
   try {
+    const supabase = getAuditSupabaseClient()
     await supabase
       .from('audit_logs')
       .insert({
@@ -100,6 +105,7 @@ export async function logDataAccess(
   details: Record<string, any> = {}
 ): Promise<void> {
   try {
+    const supabase = getAuditSupabaseClient()
     await supabase
       .from('audit_logs')
       .insert({
@@ -128,6 +134,7 @@ export async function logDataModification(
   details: Record<string, any> = {}
 ): Promise<void> {
   try {
+    const supabase = getAuditSupabaseClient()
     await supabase
       .from('audit_logs')
       .insert({
@@ -159,6 +166,7 @@ export async function logApiCall(
   try {
     const severity = statusCode >= 400 ? 'medium' : 'info'
     
+    const supabase = getAuditSupabaseClient()
     await supabase
       .from('audit_logs')
       .insert({
@@ -185,6 +193,7 @@ export async function getUserAuditLogs(
   offset: number = 0
 ): Promise<{ data: any[] | null; error: any }> {
   try {
+    const supabase = getAuditSupabaseClient()
     const { data, error } = await supabase
       .from('audit_logs')
       .select('*')
@@ -205,6 +214,7 @@ export async function getSecurityEvents(
   offset: number = 0
 ): Promise<{ data: any[] | null; error: any }> {
   try {
+    const supabase = getAuditSupabaseClient()
     let query = supabase
       .from('audit_logs')
       .select('*')

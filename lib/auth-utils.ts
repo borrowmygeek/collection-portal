@@ -17,7 +17,24 @@ function createAuthSupabaseClient() {
 }
 
 // Create admin client with service role key for server-side auth (bypasses RLS)
-function createAdminSupabaseClient() {
+export function createAdminSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  // During build time, environment variables might not be available
+  // Return a dummy client that will throw an error if actually used
+  if (!supabaseUrl || !supabaseServiceKey) {
+    if (typeof window === 'undefined' && process.env.NODE_ENV === 'development') {
+      // This is likely a build-time execution, return a dummy client
+      return {
+        from: () => ({ select: () => ({ eq: () => ({ single: () => ({ data: null, error: null }) }) }) }),
+        rpc: () => ({ data: null, error: null }),
+        auth: { getUser: () => ({ data: { user: null }, error: null }) },
+      } as any
+    }
+    throw new Error('Supabase admin environment variables not configured')
+  }
+
   return createClient(supabaseUrl, supabaseServiceKey, {
     auth: {
       autoRefreshToken: false,

@@ -2,10 +2,17 @@
 
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
+// Create admin client function - lazy-loaded to prevent build-time execution
+function createAgenciesSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Supabase environment variables not configured')
+  }
+  
+  return createClient(supabaseUrl, supabaseServiceKey)
+}
 
 export interface MasterAgency {
   id: string
@@ -25,6 +32,7 @@ export interface MasterAgency {
 
 export async function getAgencies(): Promise<MasterAgency[]> {
   try {
+    const supabase = createAgenciesSupabaseClient()
     const { data, error } = await supabase
       .from('master_agencies')
       .select('*')
@@ -40,6 +48,7 @@ export async function getAgencies(): Promise<MasterAgency[]> {
 
 export async function getAgencyById(id: string): Promise<MasterAgency | null> {
   try {
+    const supabase = createAgenciesSupabaseClient()
     const { data, error } = await supabase
       .from('master_agencies')
       .select('*')
@@ -56,6 +65,7 @@ export async function getAgencyById(id: string): Promise<MasterAgency | null> {
 
 export async function createAgency(agencyData: Omit<MasterAgency, 'id' | 'created_at' | 'updated_at'>): Promise<{ success: boolean; error?: string }> {
   try {
+    const supabase = createAgenciesSupabaseClient()
     const { error } = await supabase
       .from('master_agencies')
       .insert([agencyData])
@@ -70,6 +80,7 @@ export async function createAgency(agencyData: Omit<MasterAgency, 'id' | 'create
 
 export async function updateAgency(id: string, updates: Partial<MasterAgency>): Promise<{ success: boolean; error?: string }> {
   try {
+    const supabase = createAgenciesSupabaseClient()
     const { error } = await supabase
       .from('master_agencies')
       .update(updates)
@@ -85,6 +96,7 @@ export async function updateAgency(id: string, updates: Partial<MasterAgency>): 
 
 export async function deleteAgency(id: string): Promise<{ success: boolean; error?: string }> {
   try {
+    const supabase = createAgenciesSupabaseClient()
     const { error } = await supabase
       .from('master_agencies')
       .delete()

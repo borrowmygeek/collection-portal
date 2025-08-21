@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { authenticateApiRequest } from '@/lib/auth-utils'
+import { createAdminSupabaseClient, authenticateApiRequest } from '@/lib/auth-utils'
+
+export const runtime = 'edge'
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,10 +21,7 @@ export async function POST(request: NextRequest) {
     console.log(`🚀 [PROCESS] Processing job: ${jobId}, chunk: ${startIndex + 1}-${startIndex + chunkSize}`)
     
     // Get Supabase client
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const supabase = createAdminSupabaseClient()
     
     // Get the import job details
     const { data: job, error: jobError } = await supabase

@@ -1,20 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { authenticateApiRequest } from '@/lib/auth-utils'
+import { authenticateApiRequest, createAdminSupabaseClient } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
 import { logDataModification } from '@/lib/audit-log'
 
-// Create admin client for data operations
-const createAdminSupabaseClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase admin environment variables not configured')
-  }
-  
-  return createClient(supabaseUrl, supabaseServiceKey)
-}
+export const runtime = 'edge'
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,6 +30,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // Create Supabase client inside the function
     const supabase = createAdminSupabaseClient()
     
     // Get the agency data from the request body

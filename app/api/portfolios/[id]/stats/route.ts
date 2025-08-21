@@ -1,18 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { authenticateApiRequest } from '@/lib/auth-utils'
+import { createAdminSupabaseClient, authenticateApiRequest } from '@/lib/auth-utils'
 
-// Create admin client for data operations
-const createAdminSupabaseClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase admin environment variables not configured')
-  }
-  
-  return createClient(supabaseUrl, supabaseServiceKey)
-}
+export const runtime = 'edge'
 
 export async function GET(
   request: NextRequest,
@@ -82,32 +71,32 @@ export async function GET(
 
     // Calculate statistics
     const totalAccounts = debtAccounts?.length || 0
-    const totalOriginalBalance = debtAccounts?.reduce((sum, debtAccount) => sum + (debtAccount.original_balance || 0), 0) || 0
-    const totalCurrentBalance = debtAccounts?.reduce((sum, debtAccount) => sum + (debtAccount.current_balance || 0), 0) || 0
+    const totalOriginalBalance = debtAccounts?.reduce((sum: any, debtAccount: any) => sum + (debtAccount.original_balance || 0), 0) || 0
+    const totalCurrentBalance = debtAccounts?.reduce((sum: any, debtAccount: any) => sum + (debtAccount.current_balance || 0), 0) || 0
     const totalCollected = totalOriginalBalance - totalCurrentBalance
     const collectionRate = totalOriginalBalance > 0 ? (totalCollected / totalOriginalBalance) * 100 : 0
 
     // Status breakdown
-    const statusBreakdown = debtAccounts?.reduce((acc, debtAccount) => {
+    const statusBreakdown = debtAccounts?.reduce((acc: any, debtAccount: any) => {
       const status = debtAccount.status || 'unknown'
       acc[status] = (acc[status] || 0) + 1
       return acc
     }, {} as Record<string, number>) || {}
 
     // Priority breakdown
-    const priorityBreakdown = debtAccounts?.reduce((acc, debtAccount) => {
+    const priorityBreakdown = debtAccounts?.reduce((acc: any, debtAccount: any) => {
       const priority = debtAccount.collection_priority || 'normal'
       acc[priority] = (acc[priority] || 0) + 1
       return acc
     }, {} as Record<string, number>) || {}
 
     // Payment statistics
-    const totalPayments = debtAccounts?.reduce((sum, debtAccount) => sum + (debtAccount.total_payments || 0), 0) || 0
-    const paymentCount = debtAccounts?.reduce((sum, debtAccount) => sum + (debtAccount.payment_count || 0), 0) || 0
+    const totalPayments = debtAccounts?.reduce((sum: any, debtAccount: any) => sum + (debtAccount.total_payments || 0), 0) || 0
+    const paymentCount = debtAccounts?.reduce((sum: any, debtAccount: any) => sum + (debtAccount.payment_count || 0), 0) || 0
     const averagePayment = paymentCount > 0 ? totalPayments / paymentCount : 0
 
     // Recent activity
-    const recentPayments = debtAccounts?.filter(debtAccount => 
+    const recentPayments = debtAccounts?.filter((debtAccount: any) => 
       debtAccount.last_payment_date && 
       new Date(debtAccount.last_payment_date) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     ).length || 0

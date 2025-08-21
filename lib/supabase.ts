@@ -3,13 +3,26 @@ import { createClient } from '@supabase/supabase-js'
 // Singleton pattern for Supabase client
 let supabaseInstance: ReturnType<typeof createClient> | null = null
 
-// Environment variables
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
 // Create client with anon key for normal operations (respects RLS)
 export function createSupabaseClient() {
+  // In browser environment, these should be available as NEXT_PUBLIC_ variables
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  
+  if (!supabaseUrl || !supabaseAnonKey) {
+    // Provide a more helpful error message
+    if (typeof window !== 'undefined') {
+      console.error('❌ [SUPABASE] Environment variables missing in browser:', {
+        hasUrl: !!supabaseUrl,
+        hasKey: !!supabaseAnonKey,
+        env: process.env.NODE_ENV
+      })
+      throw new Error('Supabase configuration missing. Please check environment variables.')
+    } else {
+      throw new Error('Supabase environment variables not configured')
+    }
+  }
+  
   if (!supabaseInstance) {
     supabaseInstance = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
@@ -24,7 +37,18 @@ export function createSupabaseClient() {
 
 // Create admin client with service role key (ONLY for admin operations)
 export function createAdminSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
   if (!supabaseUrl || !supabaseServiceKey) {
+    if (typeof window === 'undefined' && process.env.NODE_ENV === 'development') {
+      // Return dummy client for build-time execution
+      return {
+        from: () => ({ select: () => ({ eq: () => ({ single: () => ({ data: null, error: null }) }) }) }),
+        rpc: () => ({ data: null, error: null }),
+        auth: { getUser: () => ({ data: { user: null }, error: null }) },
+      } as any
+    }
     throw new Error('Supabase admin environment variables not configured')
   }
   
@@ -46,12 +70,15 @@ export function getAdminSupabaseClient() {
   return createAdminSupabaseClient()
 }
 
-// Backward compatibility export
-export const supabase = createSupabaseClient()
+// Backward compatibility export - lazy-loaded
+export function getSupabase() {
+  return createSupabaseClient()
+}
 
 // Utility function for making authenticated API calls
 export async function authenticatedFetch(url: string, options: RequestInit = {}) {
   try {
+    const supabase = createSupabaseClient()
     const session = await supabase.auth.getSession()
     
     const headers: Record<string, string> = {

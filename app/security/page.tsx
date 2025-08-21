@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAuth } from '@/lib/auth-context'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { Sidebar } from '@/components/Sidebar'
 import DashboardHeader from '@/components/DashboardHeader'
 
@@ -64,6 +64,7 @@ export default function SecurityPage() {
   const fetchSecurityData = async () => {
     try {
       setLoading(true)
+      const supabase = getSupabase()
       
       // Fetch audit logs with filters
       let query = supabase
@@ -123,6 +124,7 @@ export default function SecurityPage() {
 
   const fetchSecurityStats = async () => {
     try {
+      const supabase = getSupabase()
       // Get total events in last 24 hours
       const yesterday = new Date()
       yesterday.setDate(yesterday.getDate() - 1)

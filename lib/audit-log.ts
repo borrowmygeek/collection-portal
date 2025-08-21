@@ -1,9 +1,16 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
+// Create admin client function - lazy-loaded to prevent build-time execution
+function createAuditSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error('Supabase environment variables not configured')
+  }
+  
+  return createClient(supabaseUrl, supabaseServiceKey)
+}
 
 export interface AuditEvent {
   user_id: string
@@ -80,6 +87,7 @@ export async function logAuditEvent(
     }
 
     // Insert into audit_logs table
+    const supabaseAdmin = createAuditSupabaseClient()
     const { error } = await supabaseAdmin
       .from('audit_logs')
       .insert(auditEntry)

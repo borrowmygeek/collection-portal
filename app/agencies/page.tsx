@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { MasterAgency } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
 import DashboardHeader from '@/components/DashboardHeader'
@@ -36,6 +36,7 @@ export default function AgenciesPage() {
   const fetchAgencies = async () => {
     try {
       setLoading(true)
+      const supabase = getSupabase()
       const { data, error } = await supabase
         .from('master_agencies')
         .select('*')

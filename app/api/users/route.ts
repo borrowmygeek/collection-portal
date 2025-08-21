@@ -1,25 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { authenticateApiRequest } from '@/lib/auth-utils'
+import { createAdminSupabaseClient, authenticateApiRequest } from '@/lib/auth-utils'
 import { rateLimitByUser } from '@/lib/rate-limit'
 import { logDataAccess, logDataModification, logSecurityEvent, logUserAction, AUDIT_ACTIONS } from '@/lib/audit-log'
 import { validateInput, createUserSchema, sanitizeObject, commonSanitizers, containsSqlInjection } from '@/lib/validation'
 import { sendUserAccountCreatedEmail } from '@/lib/email'
 
-// Force dynamic runtime for this API route
-export const dynamic = 'force-dynamic'
-
-// Create admin client for data operations
-const createAdminSupabaseClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase admin environment variables not configured')
-  }
-  
-  return createClient(supabaseUrl, supabaseServiceKey)
-}
+// Force edge runtime for this API route
+export const runtime = 'edge'
 
 export async function GET(request: NextRequest) {
   try {
@@ -115,7 +102,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform the data to include primary role and all roles
-    const transformedUsers = users?.map(user => {
+    const transformedUsers = users?.map((user: any) => {
       const primaryRole = user.user_roles?.find((role: any) => role.is_primary)
       const activeRoles = user.user_roles?.filter((role: any) => role.is_active) || []
       

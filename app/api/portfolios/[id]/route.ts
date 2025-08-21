@@ -1,18 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { authenticateApiRequest } from '@/lib/auth-utils'
+import { createAdminSupabaseClient, authenticateApiRequest } from '@/lib/auth-utils'
 
-// Create admin client for data operations
-const createAdminSupabaseClient = () => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Supabase admin environment variables not configured')
-  }
-  
-  return createClient(supabaseUrl, supabaseServiceKey)
-}
+export const runtime = 'edge'
 
 export async function GET(
   request: NextRequest,
@@ -223,8 +212,8 @@ export async function DELETE(
       )
     }
 
-    const debtorIdArray = debtorIds.map(d => d.id)
-    const personIds = debtorIds.map(d => d.person_id).filter(id => id !== null)
+    const debtorIdArray = debtorIds.map((d: any) => d.id)
+    const personIds = debtorIds.map((d: any) => d.person_id).filter((id: any) => id !== null)
 
     // If there are debt accounts in this portfolio, clean them up properly
     if (portfolio) {
@@ -249,8 +238,8 @@ export async function DELETE(
         .select('person_id')
         .not('person_id', 'is', null)
 
-      const remainingPersonIds = remainingDebtAccounts?.map(d => d.person_id) || []
-      const orphanedPersonIds = personIds.filter(id => !remainingPersonIds.includes(id))
+      const remainingPersonIds = remainingDebtAccounts?.map((d: any) => d.person_id) || []
+      const orphanedPersonIds = personIds.filter((id: any) => !remainingPersonIds.includes(id))
 
       if (orphanedPersonIds.length > 0) {
         // Check if any of these persons have payments through their debt accounts
@@ -259,10 +248,10 @@ export async function DELETE(
           .select('debtor_id')
           .in('debtor_id', debtorIdArray)
 
-        const paymentDebtorIds = paymentDebtors?.map(p => p.debtor_id) || []
-        const debtorsWithPayments = debtorIds.filter(d => paymentDebtorIds.includes(d.id))
-        const personIdsWithPayments = debtorsWithPayments.map(d => d.person_id).filter(id => id !== null)
-        const trulyOrphanedPersonIds = orphanedPersonIds.filter(id => !personIdsWithPayments.includes(id))
+        const paymentDebtorIds = paymentDebtors?.map((p: any) => p.debtor_id) || []
+        const debtorsWithPayments = debtorIds.filter((d: any) => paymentDebtorIds.includes(d.id))
+        const personIdsWithPayments = debtorsWithPayments.map((d: any) => d.person_id).filter((id: any) => id !== null)
+        const trulyOrphanedPersonIds = orphanedPersonIds.filter((id: any) => !personIdsWithPayments.includes(id))
 
         if (trulyOrphanedPersonIds.length > 0) {
           await supabase

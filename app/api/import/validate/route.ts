@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
-import { authenticateApiRequest } from '@/lib/auth-utils'
+import { createAdminSupabaseClient, authenticateApiRequest } from '@/lib/auth-utils'
+
+export const runtime = 'edge'
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,10 +21,7 @@ export async function POST(request: NextRequest) {
     console.log(`🔍 [VALIDATION] Validating job: ${jobId}`)
     
     // Get Supabase client
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    const supabase = createAdminSupabaseClient()
     
     // Update job status to show validation is starting
     await supabase
@@ -155,10 +153,7 @@ export async function POST(request: NextRequest) {
     try {
       const { jobId } = await request.json()
       if (jobId) {
-        const supabase = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY!
-        )
+        const supabase = createAdminSupabaseClient()
         
         await supabase
           .from('import_jobs')

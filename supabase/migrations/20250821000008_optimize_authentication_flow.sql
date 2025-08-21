@@ -30,7 +30,7 @@ BEGIN
     FROM platform_users pu
     WHERE pu.auth_user_id = get_user_profile_fast.auth_user_id
     LIMIT 1;
-    
+
     -- Get user roles (single query, no recursion)
     SELECT jsonb_agg(
         jsonb_build_object(
@@ -47,7 +47,7 @@ BEGIN
     FROM user_roles ur
     WHERE ur.user_id = (user_profile->>'id')::uuid
     AND ur.is_active = true;
-    
+
     -- Combine profile and roles
     RETURN jsonb_build_object(
         'profile', user_profile,
@@ -92,23 +92,23 @@ BEGIN
     WHERE ur.id = role_id
     AND ur.user_id = switch_user_role.user_id
     AND ur.is_active = true;
-    
+
     IF new_role IS NULL THEN
         RAISE EXCEPTION 'Invalid role or role not found';
     END IF;
-    
+
     -- Generate session token
     session_token := encode(gen_random_bytes(32), 'hex');
-    
+
     -- Create or update session
     INSERT INTO user_role_sessions (user_id, role_id, session_token, expires_at)
     VALUES (user_id, role_id, session_token, now() + interval '24 hours')
-    ON CONFLICT (user_id) 
-    DO UPDATE SET 
+    ON CONFLICT (user_id)
+    DO UPDATE SET
         role_id = EXCLUDED.role_id,
         session_token = EXCLUDED.session_token,
         expires_at = EXCLUDED.expires_at;
-    
+
     -- Return the new role and session info
     RETURN jsonb_build_object(
         'role', new_role,
@@ -142,7 +142,7 @@ BEGIN
     WHERE urs.session_token = get_current_session_role.session_token
     AND urs.expires_at > now()
     AND ur.is_active = true;
-    
+
     RETURN current_role;
 END;
 $$;
@@ -157,8 +157,9 @@ CREATE INDEX IF NOT EXISTS idx_platform_users_auth_user_id_fast ON platform_user
 -- Index for fast role lookup
 CREATE INDEX IF NOT EXISTS idx_user_roles_user_id_active ON user_roles(user_id, is_active, is_primary) WHERE is_active = true;
 
--- Index for fast session lookup
-CREATE INDEX IF NOT EXISTS idx_user_role_sessions_token_expires ON user_role_sessions(session_token, expires_at) WHERE expires_at > now();
+-- Index for fast session lookup (without problematic WHERE clause)
+CREATE INDEX IF NOT EXISTS idx_user_role_sessions_token ON user_role_sessions(session_token);
+CREATE INDEX IF NOT EXISTS idx_user_role_sessions_expires ON user_role_sessions(expires_at);
 
 -- Composite index for organization access
 CREATE INDEX IF NOT EXISTS idx_user_roles_org_context ON user_roles(user_id, organization_type, organization_id, is_active) WHERE is_active = true;
@@ -182,7 +183,7 @@ BEGIN
         WHERE pu.auth_user_id = is_user_authenticated.auth_user_id
         AND pu.status = 'active'
     ) INTO is_authenticated;
-    
+
     RETURN is_authenticated;
 END;
 $$;
@@ -200,7 +201,7 @@ DECLARE
 BEGIN
     -- Get platform admin status
     SELECT public.is_platform_admin(user_id) INTO is_platform_admin;
-    
+
     -- Platform admins have all permissions
     IF is_platform_admin THEN
         RETURN jsonb_build_object(
@@ -211,7 +212,7 @@ BEGIN
             'can_access_audit_logs', true
         );
     END IF;
-    
+
     -- Get primary role permissions
     SELECT ur.permissions INTO primary_role_permissions
     FROM user_roles ur
@@ -219,7 +220,7 @@ BEGIN
     AND ur.is_active = true
     AND ur.is_primary = true
     LIMIT 1;
-    
+
     -- Return effective permissions
     RETURN COALESCE(primary_role_permissions, '{}'::jsonb);
 END;

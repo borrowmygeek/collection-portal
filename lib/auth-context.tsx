@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { getSupabase } from './supabase'
 
@@ -73,171 +73,118 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   // Simple, clean profile fetch function with timeout and retry
-  const fetchUserProfile = async (userId: string, retryCount = 0): Promise<UserProfile | null> => {
-    const maxRetries = 2 // Max retries for profile fetch
-    const supabase = getSupabase()
-    
-    try {
-      console.log(`🔍 [AUTH] Starting profile fetch for user: ${userId} (attempt ${retryCount + 1}/${maxRetries + 1})`)
-      
-      // Monitor Supabase client state
-      console.log('🔍 [AUTH] Supabase client state:', {
-        hasAuth: !!supabase.auth,
-        hasRpc: !!supabase.rpc,
-        hasFrom: !!supabase.from,
-        timestamp: new Date().toISOString()
-      })
-      
-      // Add timeout to prevent hanging (increased to 15 seconds to handle slow database)
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Profile fetch timeout after 15 seconds')), 15000)
-      })
-
-      const profileFetchPromise = (async () => {
-        // OPTIMIZED: Single query to get profile + roles + permissions in one database call
-        console.log('🔍 [AUTH] Executing OPTIMIZED profile fetch with single query...')
-        
-        const queryStartTime = Date.now()
-        
-        // OPTIMIZED: Get profile and roles in parallel instead of separate queries
-        console.log('🔍 [AUTH] Executing parallel profile and roles queries...')
-        
-        // Query 1: Get basic profile
-        const profilePromise = supabase
-          .from('platform_users')
-          .select('id, email, auth_user_id, full_name, status')
-          .eq('auth_user_id', userId)
-          .single()
-        
-        // Query 2: Get user roles (parallel)
-        const rolesPromise = supabase
-          .from('user_roles')
-          .select('id, role_type, organization_type, organization_id, is_active, is_primary, permissions')
-          .eq('user_id', userId)
-          .eq('is_active', true)
-        
-                // Execute both queries in parallel
-        const [profileResult, rolesResult] = await Promise.all([profilePromise, rolesPromise])
-        
-        const queryTime = Date.now() - queryStartTime
-        console.log(`🔍 [AUTH] PARALLEL queries completed in ${queryTime}ms`)
-        
-        // Log performance warning if query is slow
-        if (queryTime > 5000) {
-          console.warn(`⚠️ [AUTH] SLOW QUERY: PARALLEL profile fetch took ${queryTime}ms (should be < 1000ms)`)
-        }
-        
-        // Check for errors
-        if (profileResult.error) {
-          console.error('❌ Profile query error:', profileResult.error)
-          return null
-        }
-        
-        if (rolesResult.error) {
-          console.error('❌ Roles query error:', rolesResult.error)
-          return null
-        }
-        
-        const profileData = profileResult.data as any
-        const userRoles = (rolesResult.data || []) as any[]
-        
-        console.log('🔍 [AUTH] Query result:', { 
-          hasData: !!profileData, 
-          hasRoles: !!userRoles,
-          queryTime,
-          rolesCount: userRoles.length
-        })
-
-        if (!profileData) {
-          console.error('❌ No profile data found')
-          return null
-        }
-
-        console.log('✅ [AUTH] OPTIMIZED profile data fetched:', {
-          id: profileData.id,
-          email: profileData.email,
-          rolesCount: profileData.user_roles?.length || 0
-        })
-
-        // Process the roles data from the parallel queries
-        if (!userRoles || userRoles.length === 0) {
-          console.error('❌ No active roles found for user:', profileData.id)
-          return null
-        }
-
-        // Find the primary role (or first active role if no primary)
-        const primaryRole = userRoles.find((role: any) => role.is_primary) || userRoles[0]
-        
-        if (!primaryRole) {
-          console.error('❌ No valid role found for user:', profileData.id)
-          return null
-        }
-
-        console.log('✅ [AUTH] Primary role identified:', {
-          roleType: primaryRole.role_type,
-          organizationType: primaryRole.organization_type,
-          organizationId: primaryRole.organization_id
-        })
-
-        // Transform the roles data to camelCase format
-        const availableRoles = userRoles.map((role: any) => ({
-          id: role.id,
-          roleType: role.role_type,
-          organizationType: role.organization_type,
-          organizationId: role.organization_id,
-          organizationName: getOrganizationName(role.organization_type, role.organization_id),
-          permissions: role.permissions || {}
-        }))
-
-        const userProfile: UserProfile = {
-          id: profileData.id as string,
-          auth_user_id: profileData.auth_user_id as string,
-          email: profileData.email as string,
-          full_name: profileData.full_name as string,
-          status: profileData.status as 'active' | 'inactive' | 'suspended',
-          activeRole: {
-            roleId: primaryRole.id as string,
-            roleType: primaryRole.role_type as 'platform_admin' | 'agency_admin' | 'agency_user' | 'client_admin' | 'client_user' | 'buyer',
-            organizationType: primaryRole.organization_type as 'platform' | 'agency' | 'client' | 'buyer',
-            organizationId: primaryRole.organization_id as string,
-            organizationName: getOrganizationName(primaryRole.organization_type, primaryRole.organization_id),
-            permissions: primaryRole.permissions || {}
-          },
-          availableRoles
-        }
-
-        console.log('✅ [AUTH] User profile constructed successfully:', userProfile)
-        
-        // Remove the problematic role session creation - this should be handled server-side
-        // The user can work without a role session token initially
-        
-        return userProfile
-      })()
-
-      // Race between timeout and profile fetch
-      const result = await Promise.race([profileFetchPromise, timeoutPromise]) as UserProfile | null
-      console.log('✅ [AUTH] Profile fetch completed successfully')
-      return result
-
-    } catch (error) {
-      console.error(`❌ Profile fetch failed (attempt ${retryCount + 1}):`, error)
-      
-      if (error instanceof Error && error.message.includes('timeout')) {
-        console.error('⏰ [AUTH] Profile fetch timed out - this suggests a database function issue')
-        
-        // Retry on timeout if we haven't exceeded max retries
-        if (retryCount < maxRetries) {
-                  console.log(`🔄 [AUTH] Retrying profile fetch in 500ms... (${retryCount + 1}/${maxRetries})`)
-        await new Promise(resolve => setTimeout(resolve, 500))
-          return fetchUserProfile(userId, retryCount + 1)
-        } else {
-          console.error(`❌ [AUTH] Max retries (${maxRetries}) exceeded for profile fetch`)
-        }
-      }
-      
+  const fetchUserProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
+    if (!userId) {
+      console.error('❌ [AUTH] No user ID provided for profile fetch')
       return null
     }
-  }
+
+    console.log('🔍 [AUTH] Starting profile fetch for user:', userId, '(attempt 1/3)')
+    
+    try {
+      // Get supabase client
+      const supabase = getSupabase()
+      
+      // Use the new optimized function for fast profile fetch
+      const { data, error } = await supabase.rpc('get_user_profile_fast', {
+        auth_user_id: userId
+      })
+
+      if (error) {
+        console.error('❌ [AUTH] Fast profile fetch error:', error)
+        return null
+      }
+
+      if (!data) {
+        console.error('❌ [AUTH] No data returned from fast profile fetch')
+        return null
+      }
+
+      // Type the RPC response
+      const rpcData = data as {
+        profile: {
+          id: string
+          email: string
+          auth_user_id: string
+          full_name: string
+          status: string
+        }
+        roles: Array<{
+          id: string
+          role_type: string
+          organization_type: string
+          organization_id: string
+          is_active: boolean
+          is_primary: boolean
+          permissions: any
+        }>
+        primary_role: {
+          role_id: string
+          role_type: string
+          organization_type: string
+          organization_id: string
+          permissions: any
+        }
+      }
+
+      console.log('✅ [AUTH] Fast profile fetch successful:', {
+        hasProfile: !!rpcData.profile,
+        hasRoles: !!rpcData.roles,
+        rolesCount: Array.isArray(rpcData.roles) ? rpcData.roles.length : 0
+      })
+
+      // Transform the data to match our UserProfile interface
+      const profileData = rpcData.profile
+      const userRoles = rpcData.roles || []
+      const primaryRole = rpcData.primary_role
+
+      if (!profileData || !primaryRole) {
+        console.error('❌ [AUTH] Missing profile or primary role data')
+        return null
+      }
+
+      // Transform roles to match our interface
+      const availableRoles = userRoles.map((role: any) => ({
+        id: role.id,
+        roleType: role.role_type,
+        organizationType: role.organization_type,
+        organizationId: role.organization_id,
+        organizationName: getOrganizationName(role.organization_type, role.organization_id),
+        permissions: role.permissions || {}
+      }))
+
+      // Construct the final UserProfile object
+      const userProfile: UserProfile = {
+        id: profileData.id,
+        auth_user_id: profileData.auth_user_id,
+        email: profileData.email,
+        full_name: profileData.full_name,
+        status: profileData.status as 'active' | 'inactive' | 'suspended',
+        activeRole: {
+          roleId: primaryRole.role_id,
+          roleType: primaryRole.role_type as 'platform_admin' | 'agency_admin' | 'agency_user' | 'client_admin' | 'client_user' | 'buyer',
+          organizationType: primaryRole.organization_type as 'platform' | 'agency' | 'client' | 'buyer',
+          organizationId: primaryRole.organization_id as string,
+          organizationName: getOrganizationName(primaryRole.organization_type, primaryRole.organization_id),
+          permissions: primaryRole.permissions || {}
+        },
+        availableRoles
+      }
+
+      console.log('✅ [AUTH] User profile constructed successfully:', {
+        id: userProfile.id,
+        email: userProfile.email,
+        activeRole: userProfile.activeRole.roleType,
+        availableRolesCount: userProfile.availableRoles.length
+      })
+
+      return userProfile
+
+    } catch (error) {
+      console.error('❌ [AUTH] Fast profile fetch exception:', error)
+      return null
+    }
+  }, [])
 
   // Clean auth initialization
   useEffect(() => {

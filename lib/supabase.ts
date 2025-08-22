@@ -78,8 +78,15 @@ export function getSupabase() {
 // Utility function for making authenticated API calls
 export async function authenticatedFetch(url: string, options: RequestInit = {}) {
   try {
+    console.log('🔍 [AUTH-FETCH] Starting authenticated fetch for:', url)
     const supabase = createSupabaseClient()
     const session = await supabase.auth.getSession()
+    
+    console.log('🔍 [AUTH-FETCH] Session result:', {
+      hasSession: !!session.data.session,
+      hasAccessToken: !!session.data.session?.access_token,
+      tokenLength: session.data.session?.access_token?.length || 0
+    })
     
     const headers: Record<string, string> = {
       ...(options.headers as Record<string, string> || {}),
@@ -93,6 +100,9 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
     // Add authorization header if we have a session
     if (session.data.session?.access_token) {
       headers['Authorization'] = `Bearer ${session.data.session.access_token}`
+      console.log('✅ [AUTH-FETCH] Authorization header added')
+    } else {
+      console.log('❌ [AUTH-FETCH] No access token available')
     }
 
     // Add role session token if available (for role switching)
@@ -100,17 +110,25 @@ export async function authenticatedFetch(url: string, options: RequestInit = {})
       const roleSessionToken = localStorage.getItem('roleSessionToken')
       if (roleSessionToken) {
         headers['x-role-session-token'] = roleSessionToken
+        console.log('✅ [AUTH-FETCH] Role session token added')
       }
     }
+
+    console.log('🔍 [AUTH-FETCH] Final headers:', {
+      hasAuth: !!headers.Authorization,
+      hasContentType: !!headers['Content-Type'],
+      hasRoleToken: !!headers['x-role-session-token']
+    })
 
     const response = await fetch(url, {
       ...options,
       headers,
     })
     
+    console.log('🔍 [AUTH-FETCH] Response status:', response.status)
     return response
   } catch (error) {
-    console.error('❌ authenticatedFetch: Error:', error)
+    console.error('❌ [AUTH-FETCH] Error:', error)
     throw error
   }
 }

@@ -232,7 +232,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data: userRoles, error: rolesError } = await supabase
         .from('user_roles')
         .select('id, role_type, organization_type, organization_id, is_active, is_primary, permissions')
-        .eq('user_id', profileData.id)
+        .eq('user_id', profileData.id as string)
         .eq('is_active', true)
 
       if (rolesError) {

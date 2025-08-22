@@ -223,9 +223,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
 
       const fallbackPromise = (async () => {
-        console.log('🔍 [AUTH] Fallback: Getting basic profile data...')
-        const supabase = getSupabase()
+        console.log('🔍 [AUTH] Fallback: About to call getSupabase()...')
         
+        // Add timeout specifically around getSupabase() call
+        const supabaseTimeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            console.log('⏰ [AUTH] Fallback: getSupabase() call timeout after 3 seconds')
+            reject(new Error('getSupabase() call timeout after 3 seconds'))
+          }, 3000)
+        })
+        
+        const supabasePromise = Promise.resolve(getSupabase())
+        const supabase = await Promise.race([supabasePromise, supabaseTimeoutPromise])
+        
+        console.log('✅ [AUTH] Fallback: getSupabase() completed successfully')
+        
+        console.log('🔍 [AUTH] Fallback: Getting basic profile data...')
         // Get basic profile data
         const { data: profileData, error: profileError } = await supabase
           .from('platform_users')

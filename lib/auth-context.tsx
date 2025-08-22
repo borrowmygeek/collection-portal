@@ -85,9 +85,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Get supabase client
       const supabase = getSupabase()
       
-      // Add timeout to prevent infinite hanging
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Profile fetch timeout after 5 seconds')), 5000)
+      // Create a timeout promise that will definitely reject
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          console.log('⏰ [AUTH] Profile fetch timeout triggered after 5 seconds')
+          reject(new Error('Profile fetch timeout after 5 seconds'))
+        }, 5000)
       })
 
       // Use the new optimized function for fast profile fetch
@@ -95,8 +98,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         auth_user_id: userId
       })
 
+      console.log('🔍 [AUTH] Racing profile fetch against 5-second timeout...')
+
       // Race between timeout and profile fetch
-      const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as any
+      const result = await Promise.race([profilePromise, timeoutPromise])
+      
+      // If we get here, the profile fetch succeeded (timeout would have rejected)
+      const { data, error } = result
 
       if (error) {
         console.error('❌ [AUTH] Fast profile fetch error:', error)

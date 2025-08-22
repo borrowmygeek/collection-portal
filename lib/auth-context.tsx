@@ -233,9 +233,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }, 3000)
         })
         
-        const supabasePromise = Promise.resolve(getSupabase())
-        const supabase = await Promise.race([supabasePromise, supabaseTimeoutPromise])
-        
+        const supabase = getSupabase()
         console.log('✅ [AUTH] Fallback: getSupabase() completed successfully')
         
         console.log('🔍 [AUTH] Fallback: Getting basic profile data...')

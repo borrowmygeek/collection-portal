@@ -1,3 +1,4 @@
+
 'use client'
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
@@ -72,47 +73,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // Simple, clean profile fetch function with timeout and retry
+  // Simple, clean profile fetch function - no timeouts, no complexity
   const fetchUserProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
     if (!userId) {
       console.error('❌ [AUTH] No user ID provided for profile fetch')
       return null
     }
 
-    console.log('🔍 [AUTH] Starting profile fetch for user:', userId, '(attempt 1/3)')
+    console.log('🔍 [AUTH] Starting simple profile fetch for user:', userId)
     
     try {
-      // Get supabase client
       const supabase = getSupabase()
       
-      // Create a timeout promise that will definitely reject
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          console.log('⏰ [AUTH] Profile fetch timeout triggered after 5 seconds')
-          reject(new Error('Profile fetch timeout after 5 seconds'))
-        }, 5000)
-      })
-
-      // Use the new optimized function for fast profile fetch
-      const profilePromise = supabase.rpc('get_user_profile_fast', {
+      // Use the simple function for profile fetch
+      const { data, error } = await supabase.rpc('get_user_profile_simple', {
         auth_user_id: userId
       })
 
-      console.log('🔍 [AUTH] Racing profile fetch against 5-second timeout...')
-
-      // Race between timeout and profile fetch
-      const result = await Promise.race([profilePromise, timeoutPromise])
-      
-      // If we get here, the profile fetch succeeded (timeout would have rejected)
-      const { data, error } = result
-
       if (error) {
-        console.error('❌ [AUTH] Fast profile fetch error:', error)
+        console.error('❌ [AUTH] Profile fetch error:', error)
         return null
       }
 
       if (!data) {
-        console.error('❌ [AUTH] No data returned from fast profile fetch')
+        console.error('❌ [AUTH] No data returned from profile fetch')
         return null
       }
 
@@ -143,7 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      console.log('✅ [AUTH] Fast profile fetch successful:', {
+      console.log('✅ [AUTH] Profile fetch successful:', {
         hasProfile: !!rpcData.profile,
         hasRoles: !!rpcData.roles,
         rolesCount: Array.isArray(rpcData.roles) ? rpcData.roles.length : 0
@@ -197,151 +181,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return userProfile
 
     } catch (error) {
-      console.error('❌ [AUTH] Fast profile fetch exception:', error)
-      
-      // If it's a timeout, try the old method as fallback
-      if (error instanceof Error && error.message.includes('timeout')) {
-        console.log('⏰ [AUTH] Fast profile fetch timed out, trying fallback method...')
-        return await fetchUserProfileFallback(userId)
-      }
-      
+      console.error('❌ [AUTH] Profile fetch exception:', error)
       return null
     }
   }, [])
 
-  // Fallback profile fetch method using the old approach
-  const fetchUserProfileFallback = async (userId: string): Promise<UserProfile | null> => {
-    console.log('🔄 [AUTH] Using fallback profile fetch method...')
-    
-    try {
-      // Add timeout to fallback method as well
-      const fallbackTimeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          console.log('⏰ [AUTH] Fallback method timeout triggered after 10 seconds')
-          reject(new Error('Fallback method timeout after 10 seconds'))
-        }, 10000)
-      })
 
-      const fallbackPromise = (async () => {
-        console.log('🔍 [AUTH] Fallback: About to call getSupabase()...')
-        
-        const supabase = getSupabase()
-        console.log('✅ [AUTH] Fallback: getSupabase() completed successfully')
-        
-        console.log('🔍 [AUTH] Fallback: Getting basic profile data...')
-        // Get basic profile data
-        const { data: profileData, error: profileError } = await supabase
-          .from('platform_users')
-          .select('id, email, auth_user_id, full_name, status')
-          .eq('auth_user_id', userId)
-          .single()
-
-        console.log('🔍 [AUTH] Fallback: Profile query completed:', {
-          hasData: !!profileData,
-          hasError: !!profileError,
-          errorMessage: profileError?.message
-        })
-
-        if (profileError || !profileData) {
-          console.error('❌ [AUTH] Fallback profile fetch failed:', profileError)
-          return null
-        }
-
-        console.log('✅ [AUTH] Fallback: Basic profile data fetched:', {
-          id: profileData.id,
-          email: profileData.email
-        })
-
-        console.log('🔍 [AUTH] Fallback: Getting user roles...')
-        // Get user roles
-        const { data: userRoles, error: rolesError } = await supabase
-          .from('user_roles')
-          .select('id, role_type, organization_type, organization_id, is_active, is_primary, permissions')
-          .eq('user_id', profileData.id as string)
-          .eq('is_active', true)
-
-        console.log('🔍 [AUTH] Fallback: Roles query completed:', {
-          hasData: !!userRoles,
-          hasError: !!rolesError,
-          errorMessage: rolesError?.message,
-          rolesCount: userRoles?.length || 0
-        })
-
-        if (rolesError) {
-          console.error('❌ [AUTH] Fallback roles fetch failed:', rolesError)
-          return null
-        }
-
-        if (!userRoles || userRoles.length === 0) {
-          console.error('❌ [AUTH] No active roles found for user')
-          return null
-        }
-
-        console.log('✅ [AUTH] Fallback: User roles fetched successfully')
-
-        // Find the primary role
-        const primaryRole = userRoles.find((role: any) => role.is_primary) || userRoles[0]
-
-        console.log('🔍 [AUTH] Fallback: Primary role identified:', {
-          roleId: primaryRole.id,
-          roleType: primaryRole.role_type,
-          isPrimary: primaryRole.is_primary
-        })
-
-        // Transform roles to match our interface
-        const availableRoles = userRoles.map((role: any) => ({
-          id: role.id as string,
-          roleType: role.role_type as 'platform_admin' | 'agency_admin' | 'agency_user' | 'client_admin' | 'client_user' | 'buyer',
-          organizationType: role.organization_type as 'platform' | 'agency' | 'client' | 'buyer',
-          organizationId: role.organization_id as string,
-          organizationName: getOrganizationName(role.organization_type as 'platform' | 'agency' | 'client' | 'buyer', role.organization_id as string),
-          permissions: role.permissions || {}
-        }))
-
-        console.log('✅ [AUTH] Fallback: Roles transformed successfully')
-
-        // Construct the final UserProfile object
-        const userProfile: UserProfile = {
-          id: profileData.id as string,
-          auth_user_id: profileData.auth_user_id as string,
-          email: profileData.email as string,
-          full_name: profileData.full_name as string,
-          status: profileData.status as 'active' | 'inactive' | 'suspended',
-          activeRole: {
-            roleId: primaryRole.id as string,
-            roleType: primaryRole.role_type as 'platform_admin' | 'agency_admin' | 'agency_user' | 'client_admin' | 'client_user' | 'buyer',
-            organizationType: primaryRole.organization_type as 'platform' | 'agency' | 'client' | 'buyer',
-            organizationId: primaryRole.organization_id as string,
-            organizationName: getOrganizationName(primaryRole.organization_type as string, primaryRole.organization_id as string),
-            permissions: primaryRole.permissions || {}
-          },
-          availableRoles
-        }
-
-        console.log('✅ [AUTH] Fallback profile fetch successful:', {
-          id: userProfile.id,
-          email: userProfile.email,
-          activeRole: userProfile.activeRole.roleType
-        })
-
-        return userProfile
-      })()
-
-      // Race between timeout and fallback
-      const result = await Promise.race([fallbackPromise, fallbackTimeoutPromise])
-      return result
-
-    } catch (error) {
-      console.error('❌ [AUTH] Fallback profile fetch exception:', error)
-      
-      if (error instanceof Error && error.message.includes('timeout')) {
-        console.log('⏰ [AUTH] Fallback method timed out - this suggests a database issue')
-        console.log('   The fallback method should complete within 10 seconds')
-      }
-      
-      return null
-    }
-  }
 
   // Clean auth initialization
   useEffect(() => {

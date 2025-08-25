@@ -78,16 +78,31 @@ export async function GET(request: NextRequest) {
     console.log('✅ [USERS API] Successfully fetched users:', users?.length || 0)
 
     // Transform the data to match the expected format
-    const transformedUsers = users?.map((user: any) => ({
-      id: user.id,
-      email: user.email,
-      full_name: user.full_name,
-      status: user.status,
-      created_at: user.created_at,
-      updated_at: user.updated_at,
-      roles: user.user_roles || [],
-      agency: user.agency
-    })) || []
+    const transformedUsers = users?.map((user: any) => {
+      // Find primary role
+      const primaryRole = user.user_roles?.find((role: any) => role.is_primary) || null
+      
+      return {
+        id: user.id,
+        auth_user_id: user.auth_user_id || null,
+        email: user.email,
+        full_name: user.full_name,
+        role: primaryRole?.role_type || 'unknown', // For backward compatibility
+        primary_role: primaryRole ? {
+          id: primaryRole.id,
+          role_type: primaryRole.role_type,
+          organization_type: primaryRole.organization_type,
+          organization_id: primaryRole.organization_id,
+          permissions: primaryRole.permissions || {}
+        } : null,
+        roles: user.user_roles || [],
+        agency_id: user.agency?.id || null,
+        status: user.status,
+        last_login_at: user.last_login_at || null,
+        created_at: user.created_at,
+        agency: user.agency
+      }
+    }) || []
 
     return NextResponse.json({
       users: transformedUsers,

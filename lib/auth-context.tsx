@@ -89,11 +89,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       console.log('🔍 [AUTH] About to call RPC function...')
       
-      // Add timeout to prevent hanging
+      // Add timeout to prevent hanging (increased to 15 seconds for cold starts)
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => {
-          reject(new Error('RPC call timeout after 10 seconds'))
-        }, 10000)
+          reject(new Error('RPC call timeout after 15 seconds'))
+        }, 15000)
       })
       
       // Use the simple function for profile fetch with timeout

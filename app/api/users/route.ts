@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     // Check if user is platform admin using our new function
     const { data: isAdmin, error: adminCheckError } = await supabase.rpc('is_platform_admin', {
-      user_id: user.id
+      auth_user_id: user.id
     })
 
     if (adminCheckError) {
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
 
     // Check if user is platform admin using our new function
     const { data: isAdmin, error: adminCheckError } = await supabase.rpc('is_platform_admin', {
-      user_id: user.id
+      auth_user_id: user.id
     })
 
     if (adminCheckError) {

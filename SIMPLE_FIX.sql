@@ -1,6 +1,6 @@
 -- ============================================================================
 -- SIMPLE FIX - GET THE APP WORKING
--- This migration temporarily disables RLS to fix the authentication issues
+-- Run this in your Supabase SQL Editor to fix authentication issues
 -- ============================================================================
 
 -- ============================================================================
@@ -209,25 +209,42 @@ WHERE role_type = 'buyer';
 -- STEP 4: VERIFICATION
 -- ============================================================================
 
--- Log the fix summary
-DO $$
-DECLARE
-    users_count integer;
-    roles_count integer;
-    permissions_count integer;
-BEGIN
-    -- Count users and roles
-    SELECT COUNT(*) INTO users_count FROM platform_users;
-    SELECT COUNT(*) INTO roles_count FROM user_roles;
-    SELECT COUNT(*) INTO permissions_count FROM user_roles WHERE permissions != '{}';
-    
-    RAISE NOTICE '=== SIMPLE FIX APPLIED ===';
-    RAISE NOTICE 'RLS disabled on all tables';
-    RAISE NOTICE 'Simple functions created:';
-    RAISE NOTICE '  - get_user_profile_simple()';
-    RAISE NOTICE '  - user_has_permission_simple()';
-    RAISE NOTICE 'Permissions populated for % roles', permissions_count;
-    RAISE NOTICE 'Total users: %, Total roles: %', users_count, roles_count;
-    RAISE NOTICE 'The app should now work without authentication issues';
-    RAISE NOTICE '========================================';
-END $$;
+-- Check the results
+SELECT 
+    'RLS Status' as check_type,
+    tablename,
+    CASE WHEN rowsecurity THEN 'ENABLED' ELSE 'DISABLED' END as rls_status
+FROM pg_tables 
+WHERE schemaname = 'public' 
+AND tablename IN ('user_roles', 'platform_users', 'user_role_sessions', 'master_agencies', 'master_clients', 'master_portfolios');
+
+-- Check if functions exist
+SELECT 
+    'Functions' as check_type,
+    routine_name,
+    'EXISTS' as status
+FROM information_schema.routines 
+WHERE routine_schema = 'public' 
+AND routine_name IN ('get_user_profile_simple', 'user_has_permission_simple');
+
+-- Check permissions
+SELECT 
+    'Permissions' as check_type,
+    role_type,
+    COUNT(*) as roles_count,
+    COUNT(CASE WHEN permissions != '{}' THEN 1 END) as with_permissions
+FROM user_roles 
+GROUP BY role_type;
+
+-- Test the function with a sample user
+SELECT 
+    'Test Function' as check_type,
+    'get_user_profile_simple' as function_name,
+    CASE 
+        WHEN EXISTS(
+            SELECT 1 FROM information_schema.routines 
+            WHERE routine_schema = 'public' 
+            AND routine_name = 'get_user_profile_simple'
+        ) THEN 'FUNCTION EXISTS' 
+        ELSE 'FUNCTION MISSING' 
+    END as status;

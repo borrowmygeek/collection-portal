@@ -83,12 +83,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     console.log('🔍 [AUTH] Starting simple profile fetch for user:', userId)
     
     try {
+      console.log('🔍 [AUTH] Getting Supabase client...')
       const supabase = getSupabase()
+      console.log('✅ [AUTH] Supabase client obtained')
       
-      // Use the simple function for profile fetch
-      const { data, error } = await supabase.rpc('get_user_profile_simple', {
+      console.log('🔍 [AUTH] About to call RPC function...')
+      
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('RPC call timeout after 10 seconds'))
+        }, 10000)
+      })
+      
+      // Use the simple function for profile fetch with timeout
+      const rpcPromise = supabase.rpc('get_user_profile_simple', {
         auth_user_id: userId
       })
+      
+      const result = await Promise.race([rpcPromise, timeoutPromise])
+      const { data, error } = result as any
+      console.log('✅ [AUTH] RPC call completed')
 
       if (error) {
         console.error('❌ [AUTH] Profile fetch error:', error)
@@ -182,6 +197,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     } catch (error) {
       console.error('❌ [AUTH] Profile fetch exception:', error)
+      
+      if (error instanceof Error && error.message.includes('timeout')) {
+        console.log('⏰ [AUTH] RPC call timed out - this suggests the function is hanging')
+        console.log('   The get_user_profile_simple function may not be working properly')
+      }
+      
       return null
     }
   }, [])
